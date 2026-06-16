@@ -3,7 +3,6 @@
 [ドラマのじかん](https://github.com/micchymouse/dorama_no_jikan)(private)アプリ用の**シードJSON配信**リポジトリ。
 
 日本語版 Wikipedia の MediaWiki API から「今期の連続ドラマ一覧」を生成し、**GitHub Pages** で静的配信する。
-アプリはここから取得し、失敗時は同梱アセットへフォールバックする(**ローカル完結・アカウント不要・サーバー費ゼロ**方針)。
 
 - データ源: 公開 Wikipedia(規約クリア・無料)。秘匿情報は含まない。
 - 配信URL: `https://micchymouse.github.io/dorama-seed/seed/dramas_{year}_{cool}.json`
