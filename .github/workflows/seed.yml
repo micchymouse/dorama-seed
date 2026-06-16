@@ -1,0 +1,65 @@
+name: シードJSON生成・配信
+
+# 日本語版 Wikipedia からシードJSONを生成し、GitHub Pages に静的配信する。
+# アプリは Pages のURLから取得し、失敗時は同梱アセットへフォールバックする。
+
+on:
+  # 毎週月曜 18:00 JST(= 09:00 UTC)に再生成。
+  schedule:
+    - cron: '0 9 * * 1'
+  # 手動実行(年を指定可能。未指定なら当年)。
+  workflow_dispatch:
+    inputs:
+      year:
+        description: '対象年(空欄なら当年)'
+        required: false
+        default: ''
+
+# GitHub Pages へのデプロイに必要な権限。
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Pages デプロイの同時実行を1つに。
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: シード生成(当年の全クール)
+        run: |
+          set -euo pipefail
+          YEAR="${{ github.event.inputs.year }}"
+          if [ -z "$YEAR" ]; then YEAR="$(date +%Y)"; fi
+          echo "対象年: $YEAR"
+          mkdir -p public/seed
+          for cool in winter spring summer autumn; do
+            echo "== $YEAR $cool =="
+            python3 scripts/fetch_wikipedia_dramas.py "$YEAR" "$cool"
+            mv "dramas_${YEAR}_${cool}.json" public/seed/
+          done
+          ls -la public/seed
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
