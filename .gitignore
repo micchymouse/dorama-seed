@@ -1,0 +1,5 @@
+# Claude Code 用のローカル指示ファイル(リポジトリに含めない)
+CLAUDE.md
+
+# 生成されるシードJSON(配信は GitHub Pages の成果物として行うためコミットしない)
+*.json
