@@ -31,6 +31,7 @@ COOLS = {"winter": (1, 3), "spring": (4, 6), "summer": (7, 9), "autumn": (10, 12
 # 曜日の並び順(月曜が先頭、日曜が末尾)
 WEEKDAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3,
                  "金曜": 4, "土曜": 5, "日曜": 6}
+WEEKDAYS = list(WEEKDAY_ORDER)             # idx -> 曜日
 
 
 def _minutes(tm):
@@ -41,21 +42,35 @@ def _minutes(tm):
     return int(h) * 60 + int(m)
 
 
-def sort_key(r):
-    """月曜先頭・時刻降順で並べるためのソートキー。
+def broadcast_night(weekday, time):
+    """放送時刻を「番組表式」に正規化して (曜日, 時刻) を返す。
 
-    日曜深夜枠(放送日付は月曜だが 5:00 未満)は前日=日曜の位置に寄せる。
-    Wikipedia が "日曜 24:50" のように 24時超で表す深夜枠も、+24時間扱いで
-    同じ位置に揃う。曜日・時刻が取れない作品は各グループの末尾へ送る。
+    深夜枠(0〜4 時台)はその放送が属する前夜の曜日へ寄せ、24 時超表記にする。
+      例: ("火曜", "01:29") -> ("月曜", "25:29")  # 火曜未明 = 月曜深夜
+    すでに 24 時超("24:50" 等)の表記はその曜日の深夜としてそのまま整形する。
+    曜日か時刻が取れない場合はそのまま返す。
+    """
+    idx = WEEKDAY_ORDER.get(weekday)
+    if idx is None or not time:
+        return weekday, time
+    h, m = time.split(":")
+    h, m = int(h), int(m)
+    if h < 5:                              # 0〜4 時台 = 前夜の深夜 → 前日へ +24時間表記
+        idx = (idx - 1) % 7
+        h += 24
+    return WEEKDAYS[idx], f"{h:02d}:{m:02d}"
+
+
+def sort_key(r):
+    """月曜先頭・各曜日内は放送時刻の昇順(早朝→深夜)で並べるためのソートキー。
+
+    weekday/time は broadcast_night() で番組表式(深夜は前夜の 24 時超表記)に
+    正規化済みの前提。深夜枠は 24:xx 以降の大きい値になり各曜日の末尾に並ぶ。
+    曜日・時刻が取れない作品は末尾へ送る。
     """
     idx = WEEKDAY_ORDER.get(r["weekday"], 99)
     mins = _minutes(r["time"])
-    # 早朝(5:00 未満)は前日の深夜枠とみなし、前日へ +24時間で寄せる
-    if idx != 99 and mins is not None and mins < 5 * 60:
-        idx = (idx - 1) % 7
-        mins += 24 * 60
-    # 曜日は昇順(月曜先頭)、時刻は降順。未取得は末尾。
-    return (idx, -mins if mins is not None else float("inf"))
+    return (idx, mins if mins is not None else float("inf"))
 
 
 def api_get(params, retries=4):
@@ -321,6 +336,7 @@ def build_rows(texts, year, lo, hi):
         if not (start and start[0] == year and lo <= start[1] <= hi):
             continue
         wd, tm = parse_airtime(fb.get("放送時間", ""))
+        wd, tm = broadcast_night(wd, tm)   # 深夜枠は前夜の曜日・24時超表記へ正規化
         network = (clean(fb.get("放送局", "")) or clean(fb.get("製作", ""))
                    or clean(fb.get("制作", "")))
         name = (strip_title(clean(fb.get("番組名", "")))
