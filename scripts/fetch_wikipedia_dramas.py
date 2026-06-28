@@ -23,7 +23,8 @@ import urllib.parse
 import urllib.request
 
 API = "https://ja.wikipedia.org/w/api.php"
-UA = "DoramaJikanSeed/0.1 (personal hobby project; contact: +https://github.com/micchymouse/dorama-seed)"
+UA = ("DoramaJikanSeed/0.1 (personal hobby project; "
+      "+https://github.com/micchymouse/dorama-seed)")
 
 COOLS = {"winter": (1, 3), "spring": (4, 6), "summer": (7, 9), "autumn": (10, 12)}
 
