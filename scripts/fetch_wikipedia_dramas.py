@@ -21,10 +21,14 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 API = "https://ja.wikipedia.org/w/api.php"
 UA = ("DoramaJikanSeed/0.1 (personal hobby project; "
       "+https://github.com/micchymouse/dorama-seed)")
+
+# 手動補完データ(Wikipedia 未掲載の作品を埋める)。リポジトリにコミットする。
+MANUAL_PATH = Path(__file__).resolve().parent.parent / "manual" / "dramas_manual.json"
 
 COOLS = {"winter": (1, 3), "spring": (4, 6), "summer": (7, 9), "autumn": (10, 12)}
 
@@ -279,6 +283,9 @@ def parse_start_date(field):
     m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", field)
     if m:
         return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", field.strip())  # ISO(手動)
+    if m:
+        return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
     m = re.search(r"\{\{[^{}]*?\|\s*(\d{4})\s*\|\s*(\d{1,2})\s*\|\s*(\d{1,2})",
                   field)
     if m:
@@ -324,8 +331,102 @@ def _pad(s, width):
     return s + " " * max(0, width - _w(s))
 
 
-def build_rows(texts, year, lo, hi):
-    """取得済み wikitext から対象クールの作品行を組み立てる(重複除去込み)。"""
+def load_manual(path=MANUAL_PATH):
+    """手動補完データ(作品オブジェクトの配列)を読む。無ければ空リスト。
+
+    ファイル欠如・破損・型不一致は警告だけ出してスキップし、本処理は止めない。
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return []
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"      手動補完データの読み込みに失敗({e}); スキップします",
+              file=sys.stderr)
+        return []
+    if not isinstance(data, list):
+        print("      手動補完データは配列で記述してください; スキップします",
+              file=sys.stderr)
+        return []
+    return data
+
+
+def _manual_airtime(weekday, time, name):
+    """手動データの曜日・時刻を検証・正規化する。
+
+    broadcast_night() は "HH:MM" 表記を前提とするため、人手編集による不正値
+    ("22"、"22:00:00"、未知の曜日など)はここで警告して None に落とし、
+    そのクールの生成が例外で丸ごと失敗するのを防ぐ。
+    """
+    wd = weekday or None
+    if wd is not None and wd not in WEEKDAY_ORDER:
+        print(f"[手動補完] '{name}' の曜日 {wd!r} が不正です; 無視します",
+              file=sys.stderr)
+        wd = None
+    tm = None
+    if time:
+        m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", time)
+        if m:
+            tm = f"{int(m.group(1)):02d}:{m.group(2)}"
+        else:
+            print(f"[手動補完] '{name}' の時刻 {time!r} が不正です"
+                  f"(HH:MM で記述); 無視します", file=sys.stderr)
+    return wd, tm
+
+
+def _manual_episodes(v):
+    """手動データの話数を int(または None)へ正規化する。"""
+    if isinstance(v, bool):                # bool は int の派生だが話数ではない
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str):
+        m = re.search(r"\d+", v)
+        return int(m.group()) if m else None
+    return None
+
+
+def merge_manual(rows, seen, manual, year, lo, hi):
+    """対象クールの手動補完エントリを rows に追加する(Wikipedia 優先)。
+
+    Wikipedia 側に同名(正規化後)が既にある作品はスキップし、削除の目安を通知。
+    これにより Wikipedia に記事ができ次第、手動データは自動的に無効化され二重化しない。
+    出力キーは Wikipedia 行と同一(source/note 等の運用メモは出力しない)。
+    """
+    for m in manual:
+        if not isinstance(m, dict):
+            continue
+        start = parse_start_date(m.get("start", ""))
+        if not (start and start[0] == year and lo <= start[1] <= hi):
+            continue
+        name = strip_title(clean(m.get("title", "")))
+        if not name:
+            continue
+        if name in seen:                  # Wikipedia が追いついた → 手動は不要
+            print(f"[手動補完] '{name}' は Wikipedia に登録済み。"
+                  f"{MANUAL_PATH.name} から削除できます", file=sys.stderr)
+            continue
+        seen.add(name)
+        wd, tm = _manual_airtime(m.get("weekday"), m.get("time"), name)
+        wd, tm = broadcast_night(wd, tm)   # 深夜枠は前夜の曜日・24時超表記へ正規化
+        rows.append({
+            "title": name,
+            "network": (clean(m.get("network", "")) or None),
+            "weekday": wd,
+            "time": tm,
+            "start": f"{start[0]:04d}-{start[1]:02d}-{start[2]:02d}",
+            "episodes": _manual_episodes(m.get("episodes")),
+            "slot": (m.get("slot") or None),
+            "wikipedia": None,            # Wikipedia 未掲載を示す
+        })
+
+
+def build_rows(texts, year, lo, hi, manual=None):
+    """取得済み wikitext から対象クールの作品行を組み立てる(重複除去込み)。
+
+    manual を渡すと Wikipedia 未掲載の作品を補完する(Wikipedia 優先)。
+    """
     rows, seen = [], set()
     for title, text in texts.items():
         fb = parse_infobox(text)
@@ -354,6 +455,8 @@ def build_rows(texts, year, lo, hi):
             "slot": clean(fb.get("放送枠", "")) or None,
             "wikipedia": title,
         })
+    if manual:
+        merge_manual(rows, seen, manual, year, lo, hi)
     rows.sort(key=sort_key)
     return rows
 
@@ -380,7 +483,8 @@ def main():
     texts = fetch_wikitext(titles)
 
     print("[3/3] 解析・絞り込み中 ...", file=sys.stderr)
-    rows = build_rows(texts, year, lo, hi)
+    manual = load_manual()
+    rows = build_rows(texts, year, lo, hi, manual)
 
     out = f"dramas_{year}_{cool}.json"
     with open(out, "w", encoding="utf-8") as f:
@@ -395,9 +499,12 @@ def main():
         print(_pad(r["weekday"] or "?", 6) + _pad(r["time"] or "--:--", 7)
               + _pad(ep, 6) + _pad((r["network"] or "?")[:14], 16) + r["title"])
     miss = sum(1 for r in rows if not (r["weekday"] and r["time"]))
+    manual_n = sum(1 for r in rows if r["wikipedia"] is None)
     print("-" * 70)
     print(f"曜日/時刻が取れた: {len(rows) - miss}/{len(rows)}   話数が取れた: "
           f"{sum(1 for r in rows if r['episodes'])}/{len(rows)}")
+    if manual_n:
+        print(f"うち手動補完(Wikipedia未掲載): {manual_n}件")
     print(f"-> {out} に書き出しました")
 
 

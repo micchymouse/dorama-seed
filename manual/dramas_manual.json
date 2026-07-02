@@ -1,0 +1,68 @@
+[
+  {
+    "title": "GTO",
+    "network": "関西テレビ フジテレビ系",
+    "weekday": "月曜",
+    "time": "22:00",
+    "start": "2026-07-20",
+    "episodes": null,
+    "slot": "関西テレビ制作・月曜夜10時枠",
+    "source": "https://www.ktv.jp/gto2026/",
+    "note": "Wikipedia未掲載のため手動補完(記事化されたら削除)"
+  },
+  {
+    "title": "大追跡〜警視庁SSBC強行犯係〜 Season2",
+    "network": "テレビ朝日",
+    "weekday": "水曜",
+    "time": "21:00",
+    "start": "2026-07-22",
+    "episodes": null,
+    "slot": null,
+    "source": "https://www.tv-asahi.co.jp/daitsuiseki2/",
+    "note": "Wikipedia未掲載のため手動補完(記事化されたら削除)"
+  },
+  {
+    "title": "Tokyo middle 30",
+    "network": "フジテレビ",
+    "weekday": "水曜",
+    "time": "22:00",
+    "start": "2026-07-22",
+    "episodes": null,
+    "slot": "水10",
+    "source": "https://www.fujitv.co.jp/middle30/",
+    "note": "Wikipedia未掲載のため手動補完(記事化されたら削除)"
+  },
+  {
+    "title": "しもべの王子様",
+    "network": "TOKYO MX",
+    "weekday": "金曜",
+    "time": "23:00",
+    "start": "2026-07-03",
+    "episodes": null,
+    "slot": "金曜ドラマ",
+    "source": "https://s.mxtv.jp/drama/shimopuri/",
+    "note": "Wikipedia未掲載のため手動補完(記事化されたら削除)"
+  },
+  {
+    "title": "ミッドナイト屋台2〜ル・モンドゥ〜",
+    "network": "東海テレビ フジテレビ系",
+    "weekday": "土曜",
+    "time": "23:40",
+    "start": "2026-07-04",
+    "episodes": 10,
+    "slot": "土ドラ",
+    "source": "https://www.fujitv.co.jp/b_hp/midnight_yatai2/index.html",
+    "note": "Wikipedia未掲載のため手動補完(記事化されたら削除)"
+  },
+  {
+    "title": "VIVANT",
+    "network": "TBS",
+    "weekday": "日曜",
+    "time": "21:00",
+    "start": "2026-07-26",
+    "episodes": null,
+    "slot": "日曜劇場",
+    "source": "https://www.tbs.co.jp/VIVANT_tbs/about/",
+    "note": "第2シーズン。公式は既存ページのみ・Wikipedia未反映のため手動補完(記事化されたら削除)"
+  }
+]

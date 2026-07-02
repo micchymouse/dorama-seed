@@ -3,3 +3,6 @@ CLAUDE.md
 
 # 生成されるシードJSON(配信は GitHub Pages の成果物として行うためコミットしない)
 *.json
+
+# 手動補完データ(Wikipedia 未掲載作品を埋める。これはコミットする)
+!manual/dramas_manual.json
