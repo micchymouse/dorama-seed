@@ -1,0 +1,56 @@
+name: 配信JSONのデプロイ
+
+# 台帳 registry/dramas.json から配信JSONを生成し GitHub Pages へデプロイする。
+# 台帳が main に入った(= seed.yml の PR がマージされた / 手動編集がマージされた)
+# タイミングで走る。Wikipedia へはアクセスせず、レビュー済みの台帳をそのまま
+# 配信物へ変換するだけ。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'registry/dramas.json'
+      - 'scripts/build_seed.py'
+      - 'scripts/registry.py'
+  workflow_dispatch:
+
+# GitHub Pages へのデプロイに必要な権限。
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Pages デプロイの同時実行を1つに。
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: 台帳から配信JSONを生成
+        run: |
+          set -euo pipefail
+          python3 scripts/build_seed.py
+          ls -la public/seed
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

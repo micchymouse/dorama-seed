@@ -1,8 +1,8 @@
 # Claude Code 用のローカル指示ファイル(リポジトリに含めない)
 CLAUDE.md
 
-# 生成されるシードJSON(配信は GitHub Pages の成果物として行うためコミットしない)
+# 生成物(配信JSONは registry から build_seed.py で再生成できるためコミットしない)
 *.json
 
-# 手動補完データ(Wikipedia 未掲載作品を埋める。これはコミットする)
-!manual/dramas_manual.json
+# 台帳(全作品のマスター・永続IDの源泉)。これはコミットする。
+!registry/dramas.json

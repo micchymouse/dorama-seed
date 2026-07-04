@@ -1,10 +1,12 @@
-name: シードJSON生成・配信
+name: 台帳の週次更新(PR作成)
 
-# 日本語版 Wikipedia からシードJSONを生成し、GitHub Pages に静的配信する。
-# アプリは Pages のURLから取得し、失敗時は同梱アセットへフォールバックする。
+# 日本語版 Wikipedia を情報源に台帳 registry/dramas.json を突合・更新し、
+# 変更があれば PR を作成する。人がレビューしてマージすると deploy.yml が
+# 配信JSONを再生成して GitHub Pages へデプロイする。
+# (直接公開はしない。新規採番・手動作品への紐付け候補を人が確認するため)
 
 on:
-  # 毎週月曜 18:00 JST(= 09:00 UTC)に再生成。
+  # 毎週月曜 18:00 JST(= 09:00 UTC)に再突合。
   schedule:
     - cron: '0 9 * * 1'
   # 手動実行(年を指定可能。未指定なら当年)。
@@ -15,19 +17,13 @@ on:
         required: false
         default: ''
 
-# GitHub Pages へのデプロイに必要な権限。
+# PR 作成に必要な権限。
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# Pages デプロイの同時実行を1つに。
-concurrency:
-  group: pages
-  cancel-in-progress: true
+  contents: write
+  pull-requests: write
 
 jobs:
-  build:
+  reconcile:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -36,30 +32,42 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: シード生成(当年の全クール)
+      - name: 台帳を突合・更新(当年の全クール)
+        env:
+          SEED_REPORT: ${{ github.workspace }}/seed_report.md
         run: |
           set -euo pipefail
           YEAR="${{ github.event.inputs.year }}"
           if [ -z "$YEAR" ]; then YEAR="$(date +%Y)"; fi
           echo "対象年: $YEAR"
-          mkdir -p public/seed
           for cool in winter spring summer autumn; do
             echo "== $YEAR $cool =="
             python3 scripts/fetch_wikipedia_dramas.py "$YEAR" "$cool"
-            mv "dramas_${YEAR}_${cool}.json" public/seed/
           done
-          ls -la public/seed
 
-      - uses: actions/upload-pages-artifact@v5
+      - name: PR 本文を組み立て
+        id: body
+        run: |
+          {
+            echo "Wikipedia を情報源に台帳 \`registry/dramas.json\` を更新しました。"
+            echo ""
+            echo "マージすると Pages に配信JSONが再デプロイされます。"
+            echo "**新規採番/紐付け候補を確認してからマージしてください。**"
+            echo ""
+            if [ -s seed_report.md ]; then
+              cat seed_report.md
+            else
+              echo "(新規採番・紐付け候補はありません。放送情報の更新のみ)"
+            fi
+          } > pr_body.md
+          echo "path=pr_body.md" >> "$GITHUB_OUTPUT"
+
+      - name: 変更があれば PR を作成
+        uses: peter-evans/create-pull-request@v6
         with:
-          path: public
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+          add-paths: registry/dramas.json
+          branch: auto/seed-update
+          delete-branch: true
+          commit-message: 'chore: 台帳を週次更新(Wikipedia 突合)'
+          title: '台帳の週次更新'
+          body-path: ${{ steps.body.outputs.path }}

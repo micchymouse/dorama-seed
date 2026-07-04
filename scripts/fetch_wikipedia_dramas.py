@@ -1,19 +1,31 @@
 #!/usr/bin/env python3
-"""
-ドラマのじかん — Wikipedia から「今期の連続ドラマ一覧」を取得するスクリプト。
+"""ドラマのじかん — Wikipedia を情報源に台帳(registry)を突合・更新するスクリプト。
 
-データ源: 日本語版 Wikipedia の MediaWiki API
-  1. Category:{年}年のテレビドラマ のメンバー(記事)を列挙
-  2. 各記事の {{基礎情報 テレビ番組}} infobox を取得・解析
-  3. 放送開始が指定クール(例: 4〜6月)の作品だけに絞り込む
+台帳 `registry/dramas.json` がマスター。Wikipedia は情報源の一つで、ここでは
+指定した年・クールの記事を取得して台帳と突合し、放送情報を更新する。
 
-出力: 標準出力にサマリ表 + JSON ファイル(放送局/曜日/時刻/開始日/話数)
+処理の流れ:
+  1. Category:{年}年のテレビドラマ のメンバー記事を列挙し、pageid 付きで
+     wikitext を取得。{{基礎情報 テレビ番組}} infobox を解析。
+  2. 放送開始が指定クールに入る作品だけに絞り込む。
+  3. pageid が台帳に一致 → その台帳レコードの放送情報を更新(Wikipedia 優先)。
+  4. pageid 未知の新記事 → 台帳の同一クールに「正規化タイトルが類似する
+     pageid=null のレコード(手動登録作品)」があれば**紐付け候補**として報告し、
+     自動では紐付けない。類似が無ければ新IDを採番して台帳へ追加。
+  5. 台帳から当該クールの配信JSONを再生成し、サマリ表と報告を表示。
+
+冪等: 2回連続実行しても差分は出ず、既存IDが振り直されることもない。
 
 使い方:
-  python3 fetch_wikipedia_dramas.py 2026 spring
+  python3 scripts/fetch_wikipedia_dramas.py 2026 spring
   (cool: winter=1-3 / spring=4-6 / summer=7-9 / autumn=10-12)
+
+環境変数:
+  SEED_REPORT — 指定するとそのファイルに Markdown 形式の報告(新規採番・
+                紐付け候補)を追記する(週次ワークフローの PR 本文用)。
 """
 import json
+import os
 import re
 import sys
 import time
@@ -23,58 +35,14 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import registry as R  # noqa: E402
+
 API = "https://ja.wikipedia.org/w/api.php"
 UA = ("DoramaJikanSeed/0.1 (personal hobby project; "
       "+https://github.com/micchymouse/dorama-seed)")
 
-# 手動補完データ(Wikipedia 未掲載の作品を埋める)。リポジトリにコミットする。
-MANUAL_PATH = Path(__file__).resolve().parent.parent / "manual" / "dramas_manual.json"
-
-COOLS = {"winter": (1, 3), "spring": (4, 6), "summer": (7, 9), "autumn": (10, 12)}
-
-# 曜日の並び順(月曜が先頭、日曜が末尾)
-WEEKDAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3,
-                 "金曜": 4, "土曜": 5, "日曜": 6}
-WEEKDAYS = list(WEEKDAY_ORDER)             # idx -> 曜日
-
-
-def _minutes(tm):
-    """"HH:MM" を分に変換。取れなければ None。"""
-    if not tm:
-        return None
-    h, m = tm.split(":")
-    return int(h) * 60 + int(m)
-
-
-def broadcast_night(weekday, time):
-    """放送時刻を「番組表式」に正規化して (曜日, 時刻) を返す。
-
-    深夜枠(0〜4 時台)はその放送が属する前夜の曜日へ寄せ、24 時超表記にする。
-      例: ("火曜", "01:29") -> ("月曜", "25:29")  # 火曜未明 = 月曜深夜
-    すでに 24 時超("24:50" 等)の表記はその曜日の深夜としてそのまま整形する。
-    曜日か時刻が取れない場合はそのまま返す。
-    """
-    idx = WEEKDAY_ORDER.get(weekday)
-    if idx is None or not time:
-        return weekday, time
-    h, m = time.split(":")
-    h, m = int(h), int(m)
-    if h < 5:                              # 0〜4 時台 = 前夜の深夜 → 前日へ +24時間表記
-        idx = (idx - 1) % 7
-        h += 24
-    return WEEKDAYS[idx], f"{h:02d}:{m:02d}"
-
-
-def sort_key(r):
-    """月曜先頭・各曜日内は放送時刻の昇順(早朝→深夜)で並べるためのソートキー。
-
-    weekday/time は broadcast_night() で番組表式(深夜は前夜の 24 時超表記)に
-    正規化済みの前提。深夜枠は 24:xx 以降の大きい値になり各曜日の末尾に並ぶ。
-    曜日・時刻が取れない作品は末尾へ送る。
-    """
-    idx = WEEKDAY_ORDER.get(r["weekday"], 99)
-    mins = _minutes(r["time"])
-    return (idx, mins if mins is not None else float("inf"))
+COOLS = R.COOLS
 
 
 def api_get(params, retries=4):
@@ -142,14 +110,12 @@ def category_members(year):
     return titles
 
 
-def fetch_wikitext(titles):
-    """タイトル群の wikitext を 50 件ずつ取得。{title: text} を返す。
+def fetch_pages(titles):
+    """タイトル群の wikitext を 50 件ずつ取得。{pageid, title, text} の配列を返す。
 
-    redirects=1 でリダイレクトは転送先記事へ解決してから取得する。
-    (例: カテゴリには転送ページ「刑事、ふりだしに戻る」だけが載り、
-     infobox は転送先「初恋リバース〜…」本体にある、という構造を拾うため)
-    返すキーは解決後の本体記事タイトル。複数の転送が同一本体に集約された
-    場合は自然に1件へまとまる。
+    redirects=1 でリダイレクトは転送先記事へ解決してから取得する。pageid は
+    解決後の本体記事のもの(台帳との突合キー)。複数の転送が同一本体に集約
+    された場合は pageid で 1 件へまとめる。
     """
     out = {}
     chunks = [titles[i:i + 50] for i in range(0, len(titles), 50)]
@@ -158,16 +124,21 @@ def fetch_wikitext(titles):
                      "rvslots": "main", "redirects": 1,
                      "titles": "|".join(chunk)})
         for pg in d.get("query", {}).get("pages", []):
+            if pg.get("missing") or "pageid" not in pg:
+                continue
             revs = pg.get("revisions")
             if not revs:
                 continue
             content = revs[0].get("slots", {}).get("main", {}).get("content")
             if content:
-                out[pg["title"]] = content
+                out[pg["pageid"]] = {"pageid": pg["pageid"],
+                                     "title": pg["title"], "text": content}
         if n < len(chunks) - 1:           # 最終チャンク後は待たない
             time.sleep(0.2)
-    return out
+    return list(out.values())
 
+
+# --- infobox 解析(Wikipedia wikitext → 放送情報) --------------------------
 
 def _infobox_block(text):
     """{{基礎情報 テレビ番組 ... }} のブロック文字列を波括弧の対応で切り出す。"""
@@ -322,6 +293,129 @@ def parse_episodes(fields):
     return None
 
 
+def wiki_fields(page):
+    """1 記事の wikitext から放送情報 dict を作る。対象外(infobox 無し・
+    開始日不明)なら None。"""
+    fb = parse_infobox(page["text"])
+    if not fb:
+        return None
+    start = first_start_date(fb.get("放送期間", ""), fb.get("放送開始", ""),
+                             fb.get("放送日", ""))
+    if not start:
+        return None
+    wd, tm = parse_airtime(fb.get("放送時間", ""))
+    wd, tm = R.broadcast_night(wd, tm)     # 深夜枠は前夜の曜日・24時超表記へ
+    network = (clean(fb.get("放送局", "")) or clean(fb.get("製作", ""))
+               or clean(fb.get("制作", "")))
+    name = (strip_title(clean(fb.get("番組名", "")))
+            or re.sub(r"\s*\([^()]*\)$", "", page["title"]))
+    return {
+        "title": name,
+        "network": network,
+        "weekday": wd,
+        "time": tm,
+        "start": f"{start[0]:04d}-{start[1]:02d}-{start[2]:02d}",
+        "episodes": parse_episodes(fb),
+        "slot": clean(fb.get("放送枠", "")) or None,
+    }
+
+
+# --- 台帳との突合 -----------------------------------------------------------
+
+WIKI_INFO_KEYS = ("title", "network", "weekday", "time",
+                  "start", "episodes", "slot")
+
+
+def apply_wiki_fields(record, fields, page):
+    """台帳レコードに Wikipedia の放送情報を反映(Wikipedia 優先)。
+
+    放送情報 7 キー・wikipediaTitle・(start から導出した)year/cool を更新する。
+    実際に変化があったら True。
+    """
+    changed = False
+    for k in WIKI_INFO_KEYS:
+        if record.get(k) != fields[k]:
+            record[k] = fields[k]
+            changed = True
+    if record.get("wikipediaTitle") != page["title"]:
+        record["wikipediaTitle"] = page["title"]
+        changed = True
+    year, cool = R.cool_of(fields["start"])
+    if record.get("year") != year or record.get("cool") != cool:
+        record["year"], record["cool"] = year, cool
+        changed = True
+    return changed
+
+
+def find_link_candidate(records, year, cool, title):
+    """同一クールで pageid=null(手動登録)かつ正規化タイトルが一致するレコード。"""
+    target = R.normalize_title(title)
+    for r in records:
+        if r.get("wikipediaPageId") is not None:
+            continue
+        if r.get("year") != year or r.get("cool") != cool:
+            continue
+        if R.normalize_title(r.get("title", "")) == target:
+            return r
+    return None
+
+
+def reconcile(year, cool):
+    """Wikipedia を取得して台帳を突合・更新し、(更新数, 新規, 候補) を返す。"""
+    lo, hi = COOLS[cool]
+    print(f"[1/4] Category:{year}年のテレビドラマ を列挙中 ...", file=sys.stderr)
+    titles = category_members(year)
+    print(f"      {len(titles)} 件", file=sys.stderr)
+
+    print("[2/4] 各記事の infobox を取得中 ...", file=sys.stderr)
+    pages = fetch_pages(titles)
+
+    print("[3/4] 台帳と突合中 ...", file=sys.stderr)
+    records = R.load_registry()
+    by_pageid = {r["wikipediaPageId"]: r for r in records
+                 if r.get("wikipediaPageId") is not None}
+
+    updated, added, candidates = 0, [], []
+    for page in pages:
+        fields = wiki_fields(page)
+        if not fields:
+            continue
+        y, m, _ = map(int, fields["start"].split("-"))
+        if not (y == year and lo <= m <= hi):
+            continue
+        rec = by_pageid.get(page["pageid"])
+        if rec:                            # 既知記事 → 放送情報を更新
+            if apply_wiki_fields(rec, fields, page):
+                updated += 1
+            continue
+        cand = find_link_candidate(records, year, cool, fields["title"])
+        if cand:                           # 手動作品に記事ができた可能性 → 報告のみ
+            candidates.append((page, fields["title"], cand))
+            continue
+        rec = {                            # 新規作品 → 採番して追加
+            "id": R.next_id(records),
+            "title": fields["title"],
+            "wikipediaPageId": page["pageid"],
+            "wikipediaTitle": page["title"],
+            "network": fields["network"],
+            "weekday": fields["weekday"],
+            "time": fields["time"],
+            "start": fields["start"],
+            "episodes": fields["episodes"],
+            "slot": fields["slot"],
+            "year": year,
+            "cool": cool,
+            "source": None,
+            "note": None,
+        }
+        records.append(rec)
+        by_pageid[page["pageid"]] = rec
+        added.append(rec)
+
+    R.save_registry(records)
+    return records, updated, added, candidates
+
+
 def _w(s):
     """表示幅(全角=2, 半角=1)を返す。サマリ表の桁揃え用。"""
     return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
@@ -331,134 +425,49 @@ def _pad(s, width):
     return s + " " * max(0, width - _w(s))
 
 
-def load_manual(path=MANUAL_PATH):
-    """手動補完データ(作品オブジェクトの配列)を読む。無ければ空リスト。
-
-    ファイル欠如・破損・型不一致は警告だけ出してスキップし、本処理は止めない。
-    """
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return []
-    except (OSError, json.JSONDecodeError) as e:
-        print(f"      手動補完データの読み込みに失敗({e}); スキップします",
-              file=sys.stderr)
-        return []
-    if not isinstance(data, list):
-        print("      手動補完データは配列で記述してください; スキップします",
-              file=sys.stderr)
-        return []
-    return data
+def print_summary(rows, year, cool):
+    print(f"\n=== {year}年{cool}クール 連続ドラマ {len(rows)}件 ===")
+    print(_pad("ID", 8) + _pad("曜日", 6) + _pad("時刻", 7) + _pad("話数", 6)
+          + _pad("放送局", 16) + "タイトル")
+    print("-" * 78)
+    for r in rows:
+        ep = f"{r['episodes']}話" if r["episodes"] else "?"
+        print(_pad(r["id"], 8) + _pad(r["weekday"] or "?", 6)
+              + _pad(r["time"] or "--:--", 7) + _pad(ep, 6)
+              + _pad((r["network"] or "?")[:14], 16) + r["title"])
+    miss = sum(1 for r in rows if not (r["weekday"] and r["time"]))
+    manual_n = sum(1 for r in rows if r["wikipedia"] is None)
+    print("-" * 78)
+    print(f"曜日/時刻が取れた: {len(rows) - miss}/{len(rows)}   話数が取れた: "
+          f"{sum(1 for r in rows if r['episodes'])}/{len(rows)}")
+    if manual_n:
+        print(f"うち手動補完(wikipediaTitle=null): {manual_n}件")
 
 
-def _manual_airtime(weekday, time, name):
-    """手動データの曜日・時刻を検証・正規化する。
-
-    broadcast_night() は "HH:MM" 表記を前提とするため、人手編集による不正値
-    ("22"、"22:00:00"、未知の曜日など)はここで警告して None に落とし、
-    そのクールの生成が例外で丸ごと失敗するのを防ぐ。
-    """
-    wd = weekday or None
-    if wd is not None and wd not in WEEKDAY_ORDER:
-        print(f"[手動補完] '{name}' の曜日 {wd!r} が不正です; 無視します",
-              file=sys.stderr)
-        wd = None
-    tm = None
-    if time:
-        m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", time)
-        if m:
-            tm = f"{int(m.group(1)):02d}:{m.group(2)}"
-        else:
-            print(f"[手動補完] '{name}' の時刻 {time!r} が不正です"
-                  f"(HH:MM で記述); 無視します", file=sys.stderr)
-    return wd, tm
-
-
-def _manual_episodes(v):
-    """手動データの話数を int(または None)へ正規化する。"""
-    if isinstance(v, bool):                # bool は int の派生だが話数ではない
-        return None
-    if isinstance(v, int):
-        return v
-    if isinstance(v, str):
-        m = re.search(r"\d+", v)
-        return int(m.group()) if m else None
-    return None
-
-
-def merge_manual(rows, seen, manual, year, lo, hi):
-    """対象クールの手動補完エントリを rows に追加する(Wikipedia 優先)。
-
-    Wikipedia 側に同名(正規化後)が既にある作品はスキップし、削除の目安を通知。
-    これにより Wikipedia に記事ができ次第、手動データは自動的に無効化され二重化しない。
-    出力キーは Wikipedia 行と同一(source/note 等の運用メモは出力しない)。
-    """
-    for m in manual:
-        if not isinstance(m, dict):
-            continue
-        start = parse_start_date(m.get("start", ""))
-        if not (start and start[0] == year and lo <= start[1] <= hi):
-            continue
-        name = strip_title(clean(m.get("title", "")))
-        if not name:
-            continue
-        if name in seen:                  # Wikipedia が追いついた → 手動は不要
-            print(f"[手動補完] '{name}' は Wikipedia に登録済み。"
-                  f"{MANUAL_PATH.name} から削除できます", file=sys.stderr)
-            continue
-        seen.add(name)
-        wd, tm = _manual_airtime(m.get("weekday"), m.get("time"), name)
-        wd, tm = broadcast_night(wd, tm)   # 深夜枠は前夜の曜日・24時超表記へ正規化
-        rows.append({
-            "title": name,
-            "network": (clean(m.get("network", "")) or None),
-            "weekday": wd,
-            "time": tm,
-            "start": f"{start[0]:04d}-{start[1]:02d}-{start[2]:02d}",
-            "episodes": _manual_episodes(m.get("episodes")),
-            "slot": (m.get("slot") or None),
-            "wikipedia": None,            # Wikipedia 未掲載を示す
-        })
-
-
-def build_rows(texts, year, lo, hi, manual=None):
-    """取得済み wikitext から対象クールの作品行を組み立てる(重複除去込み)。
-
-    manual を渡すと Wikipedia 未掲載の作品を補完する(Wikipedia 優先)。
-    """
-    rows, seen = [], set()
-    for title, text in texts.items():
-        fb = parse_infobox(text)
-        if not fb:
-            continue
-        start = first_start_date(fb.get("放送期間", ""), fb.get("放送開始", ""),
-                                 fb.get("放送日", ""))
-        if not (start and start[0] == year and lo <= start[1] <= hi):
-            continue
-        wd, tm = parse_airtime(fb.get("放送時間", ""))
-        wd, tm = broadcast_night(wd, tm)   # 深夜枠は前夜の曜日・24時超表記へ正規化
-        network = (clean(fb.get("放送局", "")) or clean(fb.get("製作", ""))
-                   or clean(fb.get("制作", "")))
-        name = (strip_title(clean(fb.get("番組名", "")))
-                or re.sub(r"\s*\([^()]*\)$", "", title))
-        if name in seen:                  # 同名番組の重複は先勝ち
-            continue
-        seen.add(name)
-        rows.append({
-            "title": name,
-            "network": network,
-            "weekday": wd,
-            "time": tm,
-            "start": f"{start[0]:04d}-{start[1]:02d}-{start[2]:02d}",
-            "episodes": parse_episodes(fb),
-            "slot": clean(fb.get("放送枠", "")) or None,
-            "wikipedia": title,
-        })
-    if manual:
-        merge_manual(rows, seen, manual, year, lo, hi)
-    rows.sort(key=sort_key)
-    return rows
+def write_report(added, candidates, year, cool):
+    """新規採番・紐付け候補を Markdown で報告。SEED_REPORT があれば追記。"""
+    lines = []
+    if added:
+        lines.append(f"### {year} {cool}: 新規採番 {len(added)}件")
+        for r in added:
+            lines.append(f"- `{r['id']}` {r['title']}(pageid={r['wikipediaPageId']})")
+    if candidates:
+        lines.append(f"### {year} {cool}: 紐付け候補 {len(candidates)}件"
+                     "(手動作品に記事ができた可能性・要確認)")
+        for page, title, cand in candidates:
+            lines.append(
+                f"- 記事「{page['title']}」(pageid={page['pageid']}) ⇄ "
+                f"台帳 `{cand['id']}`「{cand['title']}」"
+                f" → `python3 scripts/add_drama.py --link {cand['id']} "
+                f"--pageid {page['pageid']}` で紐付け")
+    if not lines:
+        return
+    report = "\n".join(lines)
+    print("\n" + report, file=sys.stderr)
+    path = os.environ.get("SEED_REPORT")
+    if path:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(report + "\n\n")
 
 
 def main():
@@ -473,39 +482,20 @@ def main():
     if cool not in COOLS:
         sys.exit(f"cool は {' / '.join(COOLS)} のいずれかで指定してください: "
                  f"{cool!r}")
-    year, (lo, hi) = int(year_s), COOLS[cool]
+    year = int(year_s)
 
-    print(f"[1/3] Category:{year}年のテレビドラマ を列挙中 ...", file=sys.stderr)
-    titles = category_members(year)
-    print(f"      {len(titles)} 件", file=sys.stderr)
+    records, updated, added, candidates = reconcile(year, cool)
 
-    print("[2/3] 各記事の infobox を取得中 ...", file=sys.stderr)
-    texts = fetch_wikitext(titles)
+    print("[4/4] 配信JSONを再生成中 ...", file=sys.stderr)
+    cool_records = [r for r in records if R.resolve_cool(r) == (year, cool)]
+    out, rows = R.write_seed(cool_records, year, cool)
 
-    print("[3/3] 解析・絞り込み中 ...", file=sys.stderr)
-    manual = load_manual()
-    rows = build_rows(texts, year, lo, hi, manual)
-
-    out = f"dramas_{year}_{cool}.json"
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(rows, f, ensure_ascii=False, indent=2)
-
-    print(f"\n=== {year}年{cool}クール 連続ドラマ {len(rows)}件 ===")
-    print(_pad("曜日", 6) + _pad("時刻", 7) + _pad("話数", 6)
-          + _pad("放送局", 16) + "タイトル")
-    print("-" * 70)
-    for r in rows:
-        ep = f"{r['episodes']}話" if r["episodes"] else "?"
-        print(_pad(r["weekday"] or "?", 6) + _pad(r["time"] or "--:--", 7)
-              + _pad(ep, 6) + _pad((r["network"] or "?")[:14], 16) + r["title"])
-    miss = sum(1 for r in rows if not (r["weekday"] and r["time"]))
-    manual_n = sum(1 for r in rows if r["wikipedia"] is None)
-    print("-" * 70)
-    print(f"曜日/時刻が取れた: {len(rows) - miss}/{len(rows)}   話数が取れた: "
-          f"{sum(1 for r in rows if r['episodes'])}/{len(rows)}")
-    if manual_n:
-        print(f"うち手動補完(Wikipedia未掲載): {manual_n}件")
-    print(f"-> {out} に書き出しました")
+    print_summary(rows, year, cool)
+    print(f"更新: {updated}件 / 新規採番: {len(added)}件 / "
+          f"紐付け候補: {len(candidates)}件")
+    write_report(added, candidates, year, cool)
+    print(f"-> 台帳: {R.REGISTRY_PATH}")
+    print(f"-> 配信: {out}")
 
 
 if __name__ == "__main__":
