@@ -27,6 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # create-pull-request の push と認証ヘッダが二重になり
+          # "Duplicate header: Authorization" で失敗するのを防ぐ
+          # (PR 作成用のトークンは create-pull-request 側が持つ)。
+          persist-credentials: false
 
       - uses: actions/setup-python@v6
         with:
@@ -63,7 +68,7 @@ jobs:
           echo "path=pr_body.md" >> "$GITHUB_OUTPUT"
 
       - name: 変更があれば PR を作成
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           add-paths: registry/dramas.json
           branch: auto/seed-update
