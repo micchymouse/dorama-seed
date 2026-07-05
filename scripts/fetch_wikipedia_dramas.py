@@ -6,7 +6,8 @@
 
 処理の流れ:
   1. Category:{年}年のテレビドラマ のメンバー記事を列挙し、pageid 付きで
-     wikitext を取得。{{基礎情報 テレビ番組}} infobox を解析。
+     wikitext を取得。{{基礎情報 テレビ番組}} infobox を解析。あわせて本文・
+     脚注から放送休止日(hiatus)を精度優先で抽出する。
   2. 放送開始が指定クールに入る作品だけに絞り込む。
   3. pageid が台帳に一致 → その台帳レコードの放送情報を更新(Wikipedia 優先)。
   4. pageid 未知の新記事 → 台帳の同一クールに「正規化タイトルが類似する
@@ -33,6 +34,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -293,9 +295,126 @@ def parse_episodes(fields):
     return None
 
 
+# --- 放送休止日の抽出(記事本文・脚注 → hiatus) ---------------------------
+#
+# infobox には休止日の標準フィールドが無いため、本文・脚注(<ref>)・特記事項
+# などの自由記述から「日付 × 休止」が明示的に結びつく記述だけを拾う。
+# 方針は「再現率より精度」。誤って実放送回を休止扱いにするとユーザーがその回を
+# 見逃す実害が出るため、曖昧・未確定・否定(「休止せず」等)は拾わない。
+# 拾い漏れは無害(ユーザーが手動登録するだけ)。迷ったら拾わない。
+#
+# 「休止」語をアンカーに同一節内(句点や別の数字を跨がない)で隣接する日付だけを
+# 対象にし、初回放送日・各話日付・視聴率の日付・再開日など無関係な日付を弾く。
+
+# 抽出は「休止」語をアンカーにして、その語と同じ節内に隣接する日付だけを拾う。
+# 日付が休止語の手前でも後ろでも対応する。分離要因は「。」「改行」「別の◯月◯日
+# 日付」のみで、時刻(19時等)や視聴率の数字が間に入っても結合してよい
+# (「◯月◯日は『特番…』(19時-…)放送のため休止」= 特番差し替え休止の典型表記)。
+# 初回放送日・各話日付・視聴率の日付は「。」または「別の日付」で分離される。
+_HIATUS_KW = re.compile(r"放送休止|休止")
+_DATE = re.compile(r"(\d{1,2})月(\d{1,2})日")
+_CLAUSE_BREAK = ("。", "\n")               # これを跨いだら別の節=結びつけない
+# 休止の言及そのものを打ち消す語(否定・未確定)。休止語の近傍にあれば丸ごと不採用。
+# 例:「休止せず」「休止しない」「休止の予定はない」「休止となる可能性がある」。
+_HIATUS_VOID = re.compile(r"可能性|見込み|見通し|検討|かもしれ|未定|"
+                          r"せず|しな|しませ|なけれ|ない|なし|無し")
+# 休止語の後ろにある日付が「再開日・振替放送日・次回放送日・その日以降の通常放送」
+# など実際に放送される日を指す手掛かり。該当すれば後ろ側の日付だけ捨てる。
+# 実放送回を休止と誤検出しないための最重要ガード。左側の日付判定(=「◯月◯日は
+# …休止」「◯月◯日から放送休止」)には作用しないため、休止開始日は取りこぼさない。
+_HIATUS_RESUME = re.compile(r"再開|再放送|振替|振り替|繰り下げ|繰り上げ|繰下げ|繰上げ|"
+                            r"次回|翌|ずれ込|順延|延期|以降|より|から")
+
+
+def _date_before(left):
+    """休止語の直前側で、節(。・改行)を跨がず隣接する最も近い日付 match。"""
+    m = None
+    for m in _DATE.finditer(left):
+        pass                               # 最後 = 最も休止語寄りの日付
+    if m is None or any(b in left[m.end():] for b in _CLAUSE_BREAK):
+        return None
+    return m
+
+
+def _date_after(right):
+    """休止語の直後側で、節(。・改行)を跨がず隣接する最も近い日付 match。"""
+    m = _DATE.search(right)                # 最初 = 最も休止語寄りの日付
+    if m is None or any(b in right[:m.start()] for b in _CLAUSE_BREAK):
+        return None
+    return m
+
+
+def _hiatus_scan_text(text):
+    """休止抽出用に wikitext の装飾を落として日付と語を近づける。
+
+    コメント・リンク [[a|b]]→b / [[a]]→a・強調 '''・<ref> の囲みタグ・
+    テンプレート {{…}} を外し、地の文だけを残す(休止は脚注内に書かれる
+    ことが多い)。テンプレート引数の数字が日付判定へ紛れ込むのを防ぐ。
+    """
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    text = re.sub(r"</?ref[^>]*>", "", text)             # <ref…> </ref> の囲みだけ外す
+    prev = None
+    while prev != text and "{{" in text:                 # ネストは内側から除去
+        prev = text
+        text = re.sub(r"\{\{[^{}]*?\}\}", "", text)
+    text = re.sub(r"\[\[[^\]|]*\|([^\]]+)\]\]", r"\1", text)
+    text = re.sub(r"\[\[([^\]]+)\]\]", r"\1", text)
+    text = re.sub(r"<br\s*/?>", " ", text)
+    return text.replace("'''", "").replace("''", "")
+
+
+def _resolve_hiatus_year(month, day, base):
+    """(月, 日) に年を補完して date を返す。start の年→翌年の順で、放送開始
+    以降かつ約1年以内(大河・朝ドラの通年放送を許容)に収まる最初の候補を採る。"""
+    for y in (base.year, base.year + 1):
+        try:
+            d = date(y, month, day)
+        except ValueError:
+            continue
+        if d >= base and (d - base).days <= 366:
+            return d
+    return None
+
+
+def extract_hiatus(text, start):
+    """記事 wikitext から放送休止日を抽出し、週次グリッド整列済みで返す。
+
+    「休止/放送休止」語ごとに、同じ節内で隣接する日付(手前・後ろ)だけを
+    候補にする。近傍に否定・未確定語があれば丸ごと捨て、後ろ側の日付が
+    「再開日」を示す場合はその日付だけ捨てる(精度優先・迷ったら拾わない)。
+    年は start から一意に補完し、`R.align_hiatus` で放送予定日へ整列する。
+    """
+    base = R.parse_iso(start)
+    if base is None:
+        return []
+    scan = _hiatus_scan_text(text)
+    found = set()
+    for km in _HIATUS_KW.finditer(scan):
+        left = scan[max(0, km.start() - 80):km.start()]
+        right = scan[km.end():km.end() + 80]
+        # 否定・未確定の判定は休止語と同じ節に限る(隣接文の「ない」等で
+        # 正当な休止を打ち消さないよう「。」「改行」で頭打ちにする)。
+        right_clause = re.split(r"[。\n]", right, maxsplit=1)[0]
+        left_clause = re.split(r"[。\n]", left)[-1]
+        if _HIATUS_VOID.search(right_clause[:24]) or _HIATUS_VOID.search(left_clause[-8:]):
+            continue                       # 否定・未確定 → この休止言及は捨てる
+        mb = _date_before(left)
+        if mb:
+            d = _resolve_hiatus_year(int(mb.group(1)), int(mb.group(2)), base)
+            if d:
+                found.add(d.isoformat())
+        ma = _date_after(right)
+        # 後ろ側の日付が再開日・振替日・次回放送日を指すなら実放送日なので除外。
+        if ma and not _HIATUS_RESUME.search(right[:ma.end() + 10]):
+            d = _resolve_hiatus_year(int(ma.group(1)), int(ma.group(2)), base)
+            if d:
+                found.add(d.isoformat())
+    return R.align_hiatus(start, found)
+
+
 def wiki_fields(page):
     """1 記事の wikitext から放送情報 dict を作る。対象外(infobox 無し・
-    開始日不明)なら None。"""
+    開始日不明)なら None。放送休止日(hiatus)は本文・脚注から抽出する。"""
     fb = parse_infobox(page["text"])
     if not fb:
         return None
@@ -309,14 +428,16 @@ def wiki_fields(page):
                or clean(fb.get("制作", "")))
     name = (strip_title(clean(fb.get("番組名", "")))
             or re.sub(r"\s*\([^()]*\)$", "", page["title"]))
+    start_iso = f"{start[0]:04d}-{start[1]:02d}-{start[2]:02d}"
     return {
         "title": name,
         "network": network,
         "weekday": wd,
         "time": tm,
-        "start": f"{start[0]:04d}-{start[1]:02d}-{start[2]:02d}",
+        "start": start_iso,
         "episodes": parse_episodes(fb),
         "slot": clean(fb.get("放送枠", "")) or None,
+        "hiatus": extract_hiatus(page["text"], start_iso),
     }
 
 
@@ -330,7 +451,8 @@ def apply_wiki_fields(record, fields, page):
     """台帳レコードに Wikipedia の放送情報を反映(Wikipedia 優先)。
 
     放送情報 7 キー・wikipediaTitle・(start から導出した)year/cool を更新する。
-    実際に変化があったら True。
+    休止日(hiatus)だけは Wikipedia 検出分と既存分をマージする(抽出が空でも
+    手動登録した休止を消さないため)。実際に変化があったら True。
     """
     changed = False
     for k in WIKI_INFO_KEYS:
@@ -343,6 +465,11 @@ def apply_wiki_fields(record, fields, page):
     year, cool = R.cool_of(fields["start"])
     if record.get("year") != year or record.get("cool") != cool:
         record["year"], record["cool"] = year, cool
+        changed = True
+    merged = R.align_hiatus(fields["start"],
+                            (record.get("hiatus") or []) + fields["hiatus"])
+    if (record.get("hiatus") or []) != merged:
+        record["hiatus"] = merged
         changed = True
     return changed
 
@@ -403,6 +530,7 @@ def reconcile(year, cool):
             "start": fields["start"],
             "episodes": fields["episodes"],
             "slot": fields["slot"],
+            "hiatus": fields["hiatus"],
             "year": year,
             "cool": cool,
             "source": None,
@@ -437,20 +565,31 @@ def print_summary(rows, year, cool):
               + _pad((r["network"] or "?")[:14], 16) + r["title"])
     miss = sum(1 for r in rows if not (r["weekday"] and r["time"]))
     manual_n = sum(1 for r in rows if r["wikipedia"] is None)
+    with_hiatus = [r for r in rows if r["hiatus"]]
     print("-" * 78)
     print(f"曜日/時刻が取れた: {len(rows) - miss}/{len(rows)}   話数が取れた: "
           f"{sum(1 for r in rows if r['episodes'])}/{len(rows)}")
     if manual_n:
         print(f"うち手動補完(wikipediaTitle=null): {manual_n}件")
+    if with_hiatus:
+        print(f"放送休止日を検出: {len(with_hiatus)}件(要確認・誤検出は台帳で修正)")
+        for r in with_hiatus:
+            print(f"  {r['id']} {r['title']}: {', '.join(r['hiatus'])}")
 
 
-def write_report(added, candidates, year, cool):
-    """新規採番・紐付け候補を Markdown で報告。SEED_REPORT があれば追記。"""
+def write_report(added, candidates, rows, year, cool):
+    """新規採番・紐付け候補・検出した休止日を Markdown で報告。SEED_REPORT があれば追記。"""
     lines = []
     if added:
         lines.append(f"### {year} {cool}: 新規採番 {len(added)}件")
         for r in added:
             lines.append(f"- `{r['id']}` {r['title']}(pageid={r['wikipediaPageId']})")
+    with_hiatus = [r for r in rows if r["hiatus"]]
+    if with_hiatus:
+        lines.append(f"### {year} {cool}: 放送休止日を検出 {len(with_hiatus)}件"
+                     "(精度優先の自動抽出・誤検出がないか要確認)")
+        for r in with_hiatus:
+            lines.append(f"- `{r['id']}` {r['title']}: {', '.join(r['hiatus'])}")
     if candidates:
         lines.append(f"### {year} {cool}: 紐付け候補 {len(candidates)}件"
                      "(手動作品に記事ができた可能性・要確認)")
@@ -493,7 +632,7 @@ def main():
     print_summary(rows, year, cool)
     print(f"更新: {updated}件 / 新規採番: {len(added)}件 / "
           f"紐付け候補: {len(candidates)}件")
-    write_report(added, candidates, year, cool)
+    write_report(added, candidates, rows, year, cool)
     print(f"-> 台帳: {R.REGISTRY_PATH}")
     print(f"-> 配信: {out}")
 

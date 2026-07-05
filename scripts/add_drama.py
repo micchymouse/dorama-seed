@@ -9,6 +9,8 @@
     --network "関西テレビ フジテレビ系" --weekday 月曜 --time 22:00 \
     --slot "関西テレビ制作・月曜夜10時枠" --source https://www.ktv.jp/gto2026/
   → 次のIDを自動採番し wikipediaPageId=null で追加する。
+  判明済みの放送休止日は --hiatus 2026-08-10,2026-08-17 のように渡せる
+  (放送予定日の週次グリッドへ整列して保存)。
 
 ## 紐付け(手動登録作品に Wikipedia 記事ができたとき)
   python3 scripts/add_drama.py --link d_0051 --pageid 123456
@@ -61,6 +63,19 @@ def cmd_add(args):
         sys.exit(f"--time は HH:MM で指定してください: {time!r}")
     weekday, time = R.broadcast_night(weekday, time)   # 深夜枠は前夜へ正規化
 
+    hiatus = []
+    if args.hiatus:
+        raw = [d.strip() for chunk in args.hiatus for d in chunk.split(",")]
+        raw = [d for d in raw if d]
+        for d in raw:
+            if R.parse_iso(d) is None:
+                sys.exit(f"--hiatus は YYYY-MM-DD 形式で指定してください: {d!r}")
+        hiatus = R.align_hiatus(args.start, raw)   # 放送予定日グリッドへ整列
+        dropped = [d for d in raw if R.align_hiatus(args.start, [d]) == []]
+        if dropped:
+            print(f"警告: 放送開始 {args.start} より前の休止日は無視しました: "
+                  f"{', '.join(dropped)}", file=sys.stderr)
+
     norm = R.normalize_title(args.title)
     for r in records:
         if (R.resolve_cool(r) == (year, cool)
@@ -82,6 +97,7 @@ def cmd_add(args):
         "start": args.start,
         "episodes": args.episodes,
         "slot": args.slot,
+        "hiatus": hiatus,
         "year": year,
         "cool": cool,
         "source": args.source,
@@ -90,7 +106,10 @@ def cmd_add(args):
     }
     records.append(record)
     R.save_registry(records)
-    print(f"追加しました: {new_id}「{args.title}」({year} {cool})")
+    msg = f"追加しました: {new_id}「{args.title}」({year} {cool})"
+    if hiatus:
+        msg += f" / 休止日 {len(hiatus)}件: {', '.join(hiatus)}"
+    print(msg)
 
 
 def cmd_link(args):
@@ -124,6 +143,9 @@ def main():
     p.add_argument("--time", help="時刻(例: 22:00)")
     p.add_argument("--episodes", type=int, help="話数")
     p.add_argument("--slot", help="放送枠")
+    p.add_argument("--hiatus", action="append", metavar="YYYY-MM-DD",
+                   help="判明済みの放送休止日(カンマ区切り可・複数指定可)。"
+                        "放送予定日グリッドへ整列して保存する")
     p.add_argument("--source", help="出典URL(運用メモ)")
     p.add_argument("--note", help="メモ(運用メモ)")
     p.add_argument("--link", metavar="ID",

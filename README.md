@@ -23,9 +23,14 @@ https://micchymouse.github.io/dorama-seed/seed/dramas_{year}_{cool}.json
   "start": "2026-07-20",
   "episodes": null,
   "slot": "関西テレビ制作・月曜夜10時枠",
-  "wikipedia": null         // Wikipedia 記事名。未掲載作品は null
+  "wikipedia": null,        // Wikipedia 記事名。未掲載作品は null
+  "hiatus": []              // 判明済みの放送休止日(ISO日付の配列。無ければ [])
 }
 ```
+
+- `hiatus` はあらかじめ判明している放送休止日。各日付は放送開始日 `start` から
+  7日おきの週次グリッドに整列済み(消費側は `start + 7*n日` としか一致判定しない)。
+  休止なし・不明は空配列 `[]`(キー自体は常に出力)。
 
 ## 台帳(registry)
 
@@ -45,8 +50,10 @@ python3 scripts/fetch_wikipedia_dramas.py 2026 summer
 python3 scripts/build_seed.py
 
 # Wikipedia 未掲載の新作を手動登録(次のIDを自動採番)
+# 判明済みの休止日があれば --hiatus で渡せる(グリッドへ整列して保存)
 python3 scripts/add_drama.py --title "GTO" --start 2026-07-20 \
-  --network "関西テレビ フジテレビ系" --weekday 月曜 --time 22:00
+  --network "関西テレビ フジテレビ系" --weekday 月曜 --time 22:00 \
+  --hiatus 2026-08-10,2026-08-17
 
 # 手動登録作品に記事ができたら pageid を紐付け(IDは不変)
 python3 scripts/add_drama.py --link d_0041 --pageid 123456

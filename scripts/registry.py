@@ -15,6 +15,8 @@
 - `title`       : 番組名
 - `wikipediaPageId` / `wikipediaTitle` : Wikipedia の pageid / 記事名(nullable)
 - `network` / `weekday` / `time` / `start` / `episodes` / `slot` : 放送情報
+- `hiatus`      : あらかじめ判明している放送休止日の配列(ISO日付・nullable)。
+                  配信時は `start` からの週次グリッドへ整列して出す(`align_hiatus`)。
 - `year` / `cool` : 配信先クール(`start` から導出、保存もする)
 - `source` / `note` : 手動登録時の運用メモ(配信JSONには出さない)
 
@@ -24,6 +26,7 @@
 import json
 import re
 import unicodedata
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,9 +38,10 @@ COOLS = {"winter": (1, 3), "spring": (4, 6), "summer": (7, 9), "autumn": (10, 12
 ID_PREFIX = "d_"
 ID_WIDTH = 4
 
-# 配信JSONに出す公開キー(この順序・この8+1キーだけ。既存アプリとの互換維持)。
+# 配信JSONに出す公開キー(この順序・この末尾の hiatus まで。既存アプリとの互換維持)。
+# hiatus は末尾に足しただけ(現行アプリは未知キーを無視、非対応でも前方互換)。
 PUBLIC_KEYS = ("id", "title", "network", "weekday", "time",
-               "start", "episodes", "slot", "wikipedia")
+               "start", "episodes", "slot", "wikipedia", "hiatus")
 
 # 曜日の並び順(月曜が先頭、日曜が末尾)。番組表式ソートに使う。
 WEEKDAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3,
@@ -92,6 +96,42 @@ def next_id(records):
 
 
 # --- クール判定・タイトル正規化 --------------------------------------------
+
+def parse_iso(s):
+    """`YYYY-MM-DD` を datetime.date に。形式不正・実在しない日付なら None。"""
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", (s or "").strip())
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def align_hiatus(start, dates):
+    """休止日を「放送開始日 start から7日おきの週次グリッド」に整列して返す。
+
+    消費側アプリは休止日を `start + 7*n日` の日付としか一致判定しないため、
+    グリッドから1日でもズレた日付は無視される。ここで各日付をその日が属する
+    「週」の放送予定日(= その作品の曜日)へスナップし、重複除去・昇順ソートした
+    ISO日付文字列の配列を返す。整列先が一意に決まる(週の中点は整数日では
+    生じない)ので冪等。start 不明・start 以前の日付は捨てる。
+    """
+    base = parse_iso(start)
+    if base is None:
+        return []
+    out = set()
+    for d in dates or []:
+        dt = d if isinstance(d, date) else parse_iso(d)
+        if dt is None:
+            continue
+        delta = (dt - base).days
+        if delta < 0:                      # 放送開始より前 = 無効
+            continue
+        n = round(delta / 7)               # 最も近い放送予定週へ寄せる
+        out.add((base + timedelta(days=7 * n)).isoformat())
+    return sorted(out)
+
 
 def cool_of(start):
     """開始日 `YYYY-MM-DD` から (年, クール名) を返す。判定不能なら (None, None)。"""
@@ -179,6 +219,9 @@ def to_public(record):
         "episodes": record.get("episodes"),
         "slot": record.get("slot"),
         "wikipedia": record.get("wikipediaTitle"),
+        # 休止日は必ず週次グリッドへ整列した配列で出す(不明・休止なしは [])。
+        # キー自体は常に出力する(消費側のパース単純化・前方互換のため)。
+        "hiatus": align_hiatus(record.get("start"), record.get("hiatus")),
     }
 
 
