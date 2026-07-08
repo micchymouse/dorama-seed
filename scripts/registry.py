@@ -205,6 +205,78 @@ def sort_key(r):
     return (idx, mins if mins is not None else float("inf"))
 
 
+# --- network の正規化(系列局はキー局へ集約) -------------------------------
+# 配信JSONの network はここでキー局名へ寄せる。台帳の生 network は Wikipedia 由来で
+# 週次 fetch に上書きされ続けるが、公開値は射影のたびに再導出するため安定する
+# (手で台帳を直す運用と違い、定期実行で元へ戻らない)。
+
+# 局名トークン(部分一致)→ キー局。系列局・制作会社表記・「系」揺れを吸収する。
+# 「○○」製作委員会 毎日放送 のように委員会名の末尾へ局名が入る例も部分一致で拾える。
+# 上から順に判定するため、同一局は先に具体的な表記を置く必要はない(全て同じ値へ寄る)。
+_NETWORK_TOKENS = (
+    # フジテレビ系(共同テレビはフジ系の制作会社で一意)
+    ("フジテレビ", "フジテレビ"), ("関西テレビ", "フジテレビ"), ("カンテレ", "フジテレビ"),
+    ("東海テレビ", "フジテレビ"), ("仙台放送", "フジテレビ"), ("共同テレビ", "フジテレビ"),
+    # 日本テレビ系
+    ("日本テレビ", "日本テレビ"), ("日テレ", "日本テレビ"), ("読売テレビ", "日本テレビ"),
+    ("中京テレビ", "日本テレビ"), ("札幌テレビ", "日本テレビ"),
+    # テレビ朝日系
+    ("テレビ朝日", "テレビ朝日"), ("朝日放送", "テレビ朝日"), ("名古屋テレビ", "テレビ朝日"),
+    # TBS系
+    ("TBS", "TBS"), ("毎日放送", "TBS"), ("中部日本放送", "TBS"),
+    # テレビ東京系
+    ("テレビ東京", "テレビ東京"), ("テレビ大阪", "テレビ東京"), ("テレビ愛知", "テレビ東京"),
+    ("テレビ北海道", "テレビ東京"), ("テレビせとうち", "テレビ東京"),
+    # キー局を持たない局はそのまま
+    ("NHK", "NHK総合"), ("WOWOW", "WOWOW"), ("TOKYO MX", "TOKYO MX"),
+    ("BS11", "BS11"),
+)
+
+# 局名が取れないときの放送枠 → キー局。単一局に一意に紐づくブランド枠のみ載せる
+# (フジ火9/テレ朝火9 のようにどの局か一意でない枠は載せない=生値のまま)。
+_SLOT_NETWORK = {
+    "月9": "フジテレビ", "木曜劇場": "フジテレビ",
+    "ドラマ9": "テレビ東京", "ドラマ24": "テレビ東京", "ドラマ25": "テレビ東京",
+    "木ドラ24": "テレビ東京", "ドラマ8": "テレビ東京",
+    "ドラマ10": "NHK総合", "夜ドラ": "NHK総合", "よるドラ": "NHK総合",
+    "特集ドラマ": "NHK総合", "プレミアムドラマ": "NHK総合",
+    "連続ドラマW": "WOWOW",
+    "ドラマストリーム": "テレビ朝日",
+    "ドラマDiVE+": "日本テレビ", "ドラマDiVE": "日本テレビ",  # 読売テレビの深夜ドラマ枠
+}
+
+
+# catalogId → 配信用の局名(手動確定)。局名トークンも一意な slot も無く自動判定
+# できない少数例だけをここで名指しで固定する。台帳フィールドではなくコード側に置く
+# ことで、週次 fetch が台帳の生 network を上書きしても配信値は戻らない。
+# 追加時は放送局を確認した根拠(公式サイト等)を持っておくこと。
+_NETWORK_OVERRIDE = {
+    "d_0050": "フジテレビ",   # スピナーベイト(関東ローカル): fujitv 系 / FOD 独占配信
+    "d_0060": "テレビ東京",   # 一緒にごはんをたべるだけ: tv-tokyo.co.jp
+    "d_0061": "テレビ東京",   # 夫婦と16歳〜狂気の隣人〜: tv-tokyo.co.jp
+}
+
+
+def canonical_network(network, slot=None, catalog_id=None):
+    """配信用に network をキー局名へ正規化する。
+    0) catalogId が手動確定マップにあればそれを最優先で使う。
+    1) 局名トークンを含めばそのキー局へ寄せる(系列局・「系」揺れ・委員会名末尾も拾う)。
+    2) 取れなければ放送枠(slot)から一意に決まる局を当てる。
+    3) どちらも不可なら生値のまま返す(不明局・独立系の配信枠など)。
+    """
+    if catalog_id and catalog_id in _NETWORK_OVERRIDE:
+        return _NETWORK_OVERRIDE[catalog_id]
+    raw = (network or "").strip()
+    for token, canonical in _NETWORK_TOKENS:
+        if token in raw:
+            return canonical
+    if slot:
+        hit = _SLOT_NETWORK.get(slot.strip())
+        if hit:
+            return hit
+    return raw or None
+
+
 # --- 配信JSONの生成(台帳 → 公開JSON) --------------------------------------
 
 def to_public(record):
@@ -212,7 +284,8 @@ def to_public(record):
     return {
         "id": record["id"],
         "title": record.get("title"),
-        "network": record.get("network"),
+        "network": canonical_network(record.get("network"), record.get("slot"),
+                                     record.get("id")),
         "weekday": record.get("weekday"),
         "time": record.get("time"),
         "start": record.get("start"),

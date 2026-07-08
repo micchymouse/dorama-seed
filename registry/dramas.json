@@ -821,7 +821,7 @@
     "time": "21:00",
     "start": "2026-07-22",
     "episodes": null,
-    "slot": null,
+    "slot": "テレビ朝日水曜21時枠刑事ドラマ",
     "year": 2026,
     "cool": "summer",
     "source": "https://www.tv-asahi.co.jp/daitsuiseki2/",
@@ -1401,7 +1401,11 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-01-21",
+      "2026-02-18"
+    ]
   },
   {
     "id": "d_0088",
@@ -1433,7 +1437,10 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-03-03"
+    ]
   },
   {
     "id": "d_0090",
@@ -1497,7 +1504,10 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-02-08"
+    ]
   },
   {
     "id": "d_0094",
@@ -1673,7 +1683,10 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-02-17"
+    ]
   },
   {
     "id": "d_0105",
@@ -1705,7 +1718,11 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-02-10",
+      "2026-02-17"
+    ]
   },
   {
     "id": "d_0107",
@@ -1753,7 +1770,11 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-02-08",
+      "2026-02-15"
+    ]
   },
   {
     "id": "d_0110",
@@ -1785,7 +1806,10 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-02-18"
+    ]
   },
   {
     "id": "d_0112",
@@ -1801,7 +1825,10 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-02-18"
+    ]
   },
   {
     "id": "d_0113",
@@ -1817,7 +1844,10 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-02-18"
+    ]
   },
   {
     "id": "d_0114",
@@ -1849,7 +1879,10 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-03-18"
+    ]
   },
   {
     "id": "d_0116",
@@ -1865,7 +1898,10 @@
     "year": 2026,
     "cool": "winter",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-02-08"
+    ]
   },
   {
     "id": "d_0117",
@@ -2008,6 +2044,23 @@
     "slot": null,
     "year": 2026,
     "cool": "autumn",
+    "source": null,
+    "note": null
+  },
+  {
+    "id": "d_0126",
+    "title": "ドライな同期の溺愛癖",
+    "wikipediaPageId": 5264796,
+    "wikipediaTitle": "ドライな同期の溺愛癖",
+    "network": "「ドライな同期の溺愛癖」製作委員会",
+    "weekday": "水曜",
+    "time": "24:00",
+    "start": "2026-07-09",
+    "episodes": null,
+    "slot": null,
+    "hiatus": [],
+    "year": 2026,
+    "cool": "summer",
     "source": null,
     "note": null
   }
