@@ -23,7 +23,9 @@
 
 環境変数:
   SEED_REPORT — 指定するとそのファイルに Markdown 形式の報告(新規採番・
-                紐付け候補)を追記する(週次ワークフローの PR 本文用)。
+                今回新たに検出した休止日・紐付け候補)を追記する(週次
+                ワークフローの PR 本文用)。休止日は台帳に残るため、既知分
+                まで載せると毎週同じ内容が並ぶ。差分だけを報告する。
 """
 import json
 import os
@@ -452,7 +454,11 @@ def apply_wiki_fields(record, fields, page):
 
     放送情報 7 キー・wikipediaTitle・(start から導出した)year/cool を更新する。
     休止日(hiatus)だけは Wikipedia 検出分と既存分をマージする(抽出が空でも
-    手動登録した休止を消さないため)。実際に変化があったら True。
+    手動登録した休止を消さないため)。
+
+    (実際に変化があったか, 今回新たに加わった休止日) を返す。休止日は台帳に
+    残るため毎回の抽出結果をそのまま報告すると PR 本文で同じ内容を繰り返す。
+    差分(新たに加わった分)だけを報告するために呼び出し側へ返す。
     """
     changed = False
     for k in WIKI_INFO_KEYS:
@@ -466,12 +472,13 @@ def apply_wiki_fields(record, fields, page):
     if record.get("year") != year or record.get("cool") != cool:
         record["year"], record["cool"] = year, cool
         changed = True
-    merged = R.align_hiatus(fields["start"],
-                            (record.get("hiatus") or []) + fields["hiatus"])
-    if (record.get("hiatus") or []) != merged:
+    before = record.get("hiatus") or []
+    merged = R.align_hiatus(fields["start"], before + fields["hiatus"])
+    new_dates = [d for d in merged if d not in before]
+    if before != merged:
         record["hiatus"] = merged
         changed = True
-    return changed
+    return changed, new_dates
 
 
 def find_link_candidate(records, year, cool, title):
@@ -488,7 +495,8 @@ def find_link_candidate(records, year, cool, title):
 
 
 def reconcile(year, cool):
-    """Wikipedia を取得して台帳を突合・更新し、(更新数, 新規, 候補) を返す。"""
+    """Wikipedia を取得して台帳を突合・更新し、
+    (台帳, 更新数, 新規, 候補, 今回新たに検出した休止日) を返す。"""
     lo, hi = COOLS[cool]
     print(f"[1/4] Category:{year}年のテレビドラマ を列挙中 ...", file=sys.stderr)
     titles = category_members(year)
@@ -502,7 +510,7 @@ def reconcile(year, cool):
     by_pageid = {r["wikipediaPageId"]: r for r in records
                  if r.get("wikipediaPageId") is not None}
 
-    updated, added, candidates = 0, [], []
+    updated, added, candidates, new_hiatus = 0, [], [], []
     for page in pages:
         fields = wiki_fields(page)
         if not fields:
@@ -512,8 +520,11 @@ def reconcile(year, cool):
             continue
         rec = by_pageid.get(page["pageid"])
         if rec:                            # 既知記事 → 放送情報を更新
-            if apply_wiki_fields(rec, fields, page):
+            changed, added_dates = apply_wiki_fields(rec, fields, page)
+            if changed:
                 updated += 1
+            if added_dates:
+                new_hiatus.append((rec, added_dates))
             continue
         cand = find_link_candidate(records, year, cool, fields["title"])
         if cand:                           # 手動作品に記事ができた可能性 → 報告のみ
@@ -539,9 +550,11 @@ def reconcile(year, cool):
         records.append(rec)
         by_pageid[page["pageid"]] = rec
         added.append(rec)
+        if fields["hiatus"]:
+            new_hiatus.append((rec, fields["hiatus"]))
 
     R.save_registry(records)
-    return records, updated, added, candidates
+    return records, updated, added, candidates, new_hiatus
 
 
 def _w(s):
@@ -572,24 +585,30 @@ def print_summary(rows, year, cool):
     if manual_n:
         print(f"うち手動補完(wikipediaTitle=null): {manual_n}件")
     if with_hiatus:
-        print(f"放送休止日を検出: {len(with_hiatus)}件(要確認・誤検出は台帳で修正)")
+        # ローカル確認用のサマリなので、台帳にある休止日を全件そのまま出す
+        # (PR 本文は write_report が今回の新規検出分だけに絞る)。
+        print(f"放送休止日あり: {len(with_hiatus)}件(要確認・誤検出は台帳で修正)")
         for r in with_hiatus:
             print(f"  {r['id']} {r['title']}: {', '.join(r['hiatus'])}")
 
 
-def write_report(added, candidates, rows, year, cool):
-    """新規採番・紐付け候補・検出した休止日を Markdown で報告。SEED_REPORT があれば追記。"""
+def write_report(added, candidates, new_hiatus, year, cool):
+    """新規採番・今回検出した休止日・紐付け候補を Markdown で報告。
+    SEED_REPORT があれば追記。
+
+    休止日は台帳に残るため、既知分まで載せると差分の無い作品が毎週 PR 本文に
+    並んでノイズになる。今回新たに加わった日付だけを列挙する。
+    """
     lines = []
     if added:
         lines.append(f"### {year} {cool}: 新規採番 {len(added)}件")
         for r in added:
             lines.append(f"- `{r['id']}` {r['title']}(pageid={r['wikipediaPageId']})")
-    with_hiatus = [r for r in rows if r["hiatus"]]
-    if with_hiatus:
-        lines.append(f"### {year} {cool}: 放送休止日を検出 {len(with_hiatus)}件"
-                     "(精度優先の自動抽出・誤検出がないか要確認)")
-        for r in with_hiatus:
-            lines.append(f"- `{r['id']}` {r['title']}: {', '.join(r['hiatus'])}")
+    if new_hiatus:
+        lines.append(f"### {year} {cool}: 放送休止日を検出 {len(new_hiatus)}件"
+                     "(今回の新規検出分・精度優先の自動抽出・誤検出がないか要確認)")
+        for r, dates in new_hiatus:
+            lines.append(f"- `{r['id']}` {r['title']}: {', '.join(dates)}")
     if candidates:
         lines.append(f"### {year} {cool}: 紐付け候補 {len(candidates)}件"
                      "(手動作品に記事ができた可能性・要確認)")
@@ -623,7 +642,7 @@ def main():
                  f"{cool!r}")
     year = int(year_s)
 
-    records, updated, added, candidates = reconcile(year, cool)
+    records, updated, added, candidates, new_hiatus = reconcile(year, cool)
 
     print("[4/4] 配信JSONを再生成中 ...", file=sys.stderr)
     cool_records = [r for r in records if R.resolve_cool(r) == (year, cool)]
@@ -631,8 +650,8 @@ def main():
 
     print_summary(rows, year, cool)
     print(f"更新: {updated}件 / 新規採番: {len(added)}件 / "
-          f"紐付け候補: {len(candidates)}件")
-    write_report(added, candidates, rows, year, cool)
+          f"紐付け候補: {len(candidates)}件 / 休止日の新規検出: {len(new_hiatus)}件")
+    write_report(added, candidates, new_hiatus, year, cool)
     print(f"-> 台帳: {R.REGISTRY_PATH}")
     print(f"-> 配信: {out}")
 
