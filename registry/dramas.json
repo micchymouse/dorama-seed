@@ -1041,11 +1041,11 @@
     "wikipediaPageId": 5265246,
     "wikipediaTitle": "しもべの王子様",
     "network": "TOKYO MX",
-    "weekday": "金曜",
+    "weekday": "木曜",
     "time": "23:00",
     "start": "2026-07-03",
     "episodes": null,
-    "slot": "金曜ドラマ",
+    "slot": "ドラマニア!",
     "year": 2026,
     "cool": "summer",
     "source": "https://s.mxtv.jp/drama/shimopuri/",
@@ -1097,7 +1097,10 @@
     "year": 2026,
     "cool": "summer",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-08-29"
+    ]
   },
   {
     "id": "d_0069",
