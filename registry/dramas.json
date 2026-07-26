@@ -1045,7 +1045,7 @@
     "time": "23:00",
     "start": "2026-07-03",
     "episodes": null,
-    "slot": "金曜ドラマ",
+    "slot": "ドラマニア!",
     "year": 2026,
     "cool": "summer",
     "source": "https://s.mxtv.jp/drama/shimopuri/",
@@ -1097,7 +1097,10 @@
     "year": 2026,
     "cool": "summer",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-08-29"
+    ]
   },
   {
     "id": "d_0069",
@@ -2146,6 +2149,40 @@
     "hiatus": [],
     "year": 2026,
     "cool": "summer",
+    "source": null,
+    "note": null
+  },
+  {
+    "id": "d_0132",
+    "title": "LOST10",
+    "wikipediaPageId": 5271237,
+    "wikipediaTitle": "LOST10",
+    "network": "TBSスパークル TBSテレビ",
+    "weekday": "金曜",
+    "time": "22:00",
+    "start": "2026-10-01",
+    "episodes": null,
+    "slot": "金曜ドラマ",
+    "hiatus": [],
+    "year": 2026,
+    "cool": "autumn",
+    "source": null,
+    "note": null
+  },
+  {
+    "id": "d_0133",
+    "title": "メリーベリーラブ",
+    "wikipediaPageId": 5272380,
+    "wikipediaTitle": "メリーベリーラブ",
+    "network": "CJ ENM Japan 日本テレビ",
+    "weekday": "水曜",
+    "time": "22:00",
+    "start": "2026-10-01",
+    "episodes": null,
+    "slot": "水曜ドラマ",
+    "hiatus": [],
+    "year": 2026,
+    "cool": "autumn",
     "source": null,
     "note": null
   }
