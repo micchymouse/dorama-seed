@@ -2219,5 +2219,22 @@
     "cool": "autumn",
     "source": null,
     "note": null
+  },
+  {
+    "id": "d_0136",
+    "title": "あにいもうと",
+    "wikipediaPageId": 5277024,
+    "wikipediaTitle": "あにいもうと (2026年のテレビドラマ)",
+    "network": "テレビ朝日系列",
+    "weekday": "土曜",
+    "time": "22:00",
+    "start": "2026-10-01",
+    "episodes": null,
+    "slot": "サタデードラマ10",
+    "hiatus": [],
+    "year": 2026,
+    "cool": "autumn",
+    "source": null,
+    "note": null
   }
 ]
