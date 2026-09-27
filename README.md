@@ -24,13 +24,18 @@ https://micchymouse.github.io/dorama-seed/seed/dramas_{year}_{cool}.json
   "episodes": null,
   "slot": "関西テレビ制作・月曜夜10時枠",
   "wikipedia": null,        // Wikipedia 記事名。未掲載作品は null
-  "hiatus": []              // 判明済みの放送休止日(ISO日付の配列。無ければ [])
+  "hiatus": [],             // 判明済みの放送休止日(ISO日付の配列。無ければ [])
+  "firstEpisode": null      // 続きから数える作品の開始話数(例: 11)。通常は null
 }
 ```
 
 - `hiatus` はあらかじめ判明している放送休止日。各日付は放送開始日 `start` から
   7日おきの週次グリッドに整列済み(消費側は `start + 7*n日` としか一致判定しない)。
   休止なし・不明は空配列 `[]`(キー自体は常に出力)。
+- `firstEpisode` はこのクールの初回が通算で第何話か。前作・前クールの続きから話数を
+  数える作品だけに入り、それ以外は `null`(キー自体は常に出力)。
+- 2クール以上続けて放送する作品は、**同じ `id` で各クールのJSONに載る**
+  (`start` / `episodes` / `hiatus` / `firstEpisode` はそのクールの値)。
 
 ## 台帳(registry)
 

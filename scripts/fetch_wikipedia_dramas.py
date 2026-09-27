@@ -487,7 +487,7 @@ def find_link_candidate(records, year, cool, title):
     for r in records:
         if r.get("wikipediaPageId") is not None:
             continue
-        if r.get("year") != year or r.get("cool") != cool:
+        if (year, cool) not in R.cools_of(r):   # 複数クール作品はどのクールでも
             continue
         if R.normalize_title(r.get("title", "")) == target:
             return r
@@ -519,6 +519,8 @@ def reconcile(year, cool):
         if not (y == year and lo <= m <= hi):
             continue
         rec = by_pageid.get(page["pageid"])
+        if rec and rec.get("seasons"):     # 複数クール作品は手動管理(自動で上書きしない)
+            continue
         if rec:                            # 既知記事 → 放送情報を更新
             changed, added_dates = apply_wiki_fields(rec, fields, page)
             if changed:
@@ -645,7 +647,7 @@ def main():
     records, updated, added, candidates, new_hiatus = reconcile(year, cool)
 
     print("[4/4] 配信JSONを再生成中 ...", file=sys.stderr)
-    cool_records = [r for r in records if R.resolve_cool(r) == (year, cool)]
+    cool_records = R.records_in_cool(records, year, cool)
     out, rows = R.write_seed(cool_records, year, cool)
 
     print_summary(rows, year, cool)

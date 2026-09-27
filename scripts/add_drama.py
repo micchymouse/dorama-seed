@@ -78,7 +78,7 @@ def cmd_add(args):
 
     norm = R.normalize_title(args.title)
     for r in records:
-        if (R.resolve_cool(r) == (year, cool)
+        if ((year, cool) in R.cools_of(r)
                 and R.normalize_title(r.get("title", "")) == norm):
             print(f"警告: 同一クールに類似作品 `{r['id']}`「{r['title']}」が"
                   "既にあります。重複でなければ続行して構いません。",

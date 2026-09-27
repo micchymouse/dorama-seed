@@ -18,6 +18,13 @@
 - `hiatus`      : あらかじめ判明している放送休止日の配列(ISO日付・nullable)。
                   配信時は `start` からの週次グリッドへ整列して出す(`align_hiatus`)。
 - `year` / `cool` : 配信先クール(`start` から導出、保存もする)
+- `firstEpisode` : このクールの初回が通算で第何話か(省略 = 1)。前作・前クールの
+                  続きから話数を数える作品だけに付ける。
+- `seasons`     : 複数クール作品のクールごとの放送情報(省略可)。各要素は
+                  `year / cool / start / episodes / hiatus / firstEpisode` を持ち
+                  (必要なら `weekday / time` 等も上書き可)、トップレベルの共通属性と
+                  マージしたものがそのクールの配信エントリになる(`expand_seasons`)。
+                  1作品 = 1レコード = 1ID の原則は変えない(同じIDが複数クールに載る)。
 - `source` / `note` : 手動登録時の運用メモ(配信JSONには出さない)
 
 配信JSON(`public/seed/dramas_{year}_{cool}.json`)は台帳を年・クールで絞り、
@@ -38,10 +45,10 @@ COOLS = {"winter": (1, 3), "spring": (4, 6), "summer": (7, 9), "autumn": (10, 12
 ID_PREFIX = "d_"
 ID_WIDTH = 4
 
-# 配信JSONに出す公開キー(この順序・この末尾の hiatus まで。既存アプリとの互換維持)。
-# hiatus は末尾に足しただけ(現行アプリは未知キーを無視、非対応でも前方互換)。
+# 配信JSONに出す公開キー(この順序。既存アプリとの互換維持)。
+# hiatus・firstEpisode は末尾に足しただけ(現行アプリは未知キーを無視、非対応でも前方互換)。
 PUBLIC_KEYS = ("id", "title", "network", "weekday", "time",
-               "start", "episodes", "slot", "wikipedia", "hiatus")
+               "start", "episodes", "slot", "wikipedia", "hiatus", "firstEpisode")
 
 # 曜日の並び順(月曜が先頭、日曜が末尾)。番組表式ソートに使う。
 WEEKDAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3,
@@ -295,7 +302,41 @@ def to_public(record):
         # 休止日は必ず週次グリッドへ整列した配列で出す(不明・休止なしは [])。
         # キー自体は常に出力する(消費側のパース単純化・前方互換のため)。
         "hiatus": align_hiatus(record.get("start"), record.get("hiatus")),
+        # 続きから数える作品の開始話数。1以下・不正値は「第1話始まり」として null。
+        # hiatus と同じくキーは常に出力する。
+        "firstEpisode": _first_episode(record.get("firstEpisode")),
     }
+
+
+def _first_episode(value):
+    """開始話数を配信用に正規化する(2以上の整数だけ残し、他は None)。"""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 2:
+        return None
+    return value
+
+
+def expand_seasons(record):
+    """レコードをクールごとのエントリへ展開する。
+
+    `seasons` を持たない通常の作品はそのまま1件。持つ作品(複数クール)は
+    トップレベルの共通属性に各要素を上書きマージした仮想レコードをクールごとに返す
+    (台帳は書き換えない)。
+    """
+    seasons = record.get("seasons")
+    if not seasons:
+        return [record]
+    base = {k: v for k, v in record.items() if k != "seasons"}
+    return [{**base, **s} for s in seasons]
+
+
+def cools_of(record):
+    """レコードが配信されるクール (year, cool) の集合(複数クール作品は複数)。"""
+    return {resolve_cool(e) for e in expand_seasons(record)}
+
+
+def records_in_cool(records, year, cool):
+    """指定クールに配信されるエントリ(複数クール作品は展開済み)の一覧。"""
+    return group_by_cool(records).get((year, cool), [])
 
 
 def resolve_cool(record):
@@ -307,13 +348,17 @@ def resolve_cool(record):
 
 
 def group_by_cool(records):
-    """レコードを (year, cool) ごとにまとめる。クール判定不能なものは除外。"""
+    """レコードを (year, cool) ごとにまとめる。クール判定不能なものは除外。
+
+    複数クール作品(`seasons`)はクールごとに展開したエントリで入る。
+    """
     groups = {}
     for r in records:
-        year, cool = resolve_cool(r)
-        if cool is None:
-            continue
-        groups.setdefault((year, cool), []).append(r)
+        for e in expand_seasons(r):
+            year, cool = resolve_cool(e)
+            if cool is None:
+                continue
+            groups.setdefault((year, cool), []).append(e)
     return groups
 
 
