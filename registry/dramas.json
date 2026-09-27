@@ -1142,15 +1142,25 @@
     "network": "TBS",
     "weekday": "日曜",
     "time": "21:00",
-    "start": "2026-07-26",
-    "episodes": 14,
     "slot": "日曜劇場",
-    "hiatus": [
-      "2026-09-20",
-      "2026-09-27"
+    "seasons": [
+      {
+        "year": 2026,
+        "cool": "summer",
+        "start": "2026-07-26",
+        "episodes": 8,
+        "hiatus": [],
+        "firstEpisode": 11
+      },
+      {
+        "year": 2026,
+        "cool": "autumn",
+        "start": "2026-10-04",
+        "episodes": null,
+        "hiatus": [],
+        "firstEpisode": 19
+      }
     ],
-    "year": 2026,
-    "cool": "summer",
     "source": "https://www.tbs.co.jp/VIVANT_tbs/about/",
     "note": "Wikipedia未掲載。記事化されたら wikipediaPageId を紐付ける(削除はしない)"
   },
