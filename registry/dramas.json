@@ -2624,5 +2624,22 @@
     "cool": "autumn",
     "source": null,
     "note": null
+  },
+  {
+    "id": "d_0159",
+    "title": "再生のウズメ",
+    "wikipediaPageId": 5289765,
+    "wikipediaTitle": "再生のウズメ",
+    "network": "フジテレビ系",
+    "weekday": "土曜",
+    "time": "23:40",
+    "start": "2026-10-03",
+    "episodes": 10,
+    "slot": "土ドラ",
+    "hiatus": [],
+    "year": 2026,
+    "cool": "autumn",
+    "source": null,
+    "note": null
   }
 ]
