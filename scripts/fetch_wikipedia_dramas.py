@@ -9,7 +9,8 @@
      wikitext を取得。{{基礎情報 テレビ番組}} infobox を解析。あわせて本文・
      脚注から放送休止日(hiatus)を精度優先で抽出する。
   2. 放送開始が指定クールに入る作品だけに絞り込む。
-  3. pageid が台帳に一致 → その台帳レコードの放送情報を更新(Wikipedia 優先)。
+  3. pageid が台帳に一致 → その台帳レコードの放送情報を更新(Wikipedia 優先。
+     Wikipedia で取れなかった項目は台帳の既存値を残す)。
   4. pageid 未知の新記事 → 台帳の同一クールに「正規化タイトルが類似する
      pageid=null のレコード(手動登録作品)」があれば**紐付け候補**として報告し、
      自動では紐付けない。類似が無ければ新IDを採番して台帳へ追加。
@@ -453,6 +454,9 @@ def apply_wiki_fields(record, fields, page):
     """台帳レコードに Wikipedia の放送情報を反映(Wikipedia 優先)。
 
     放送情報 7 キー・wikipediaTitle・(start から導出した)year/cool を更新する。
+    ただし Wikipedia 側で取れなかった項目(None)は台帳の既存値を残す。infobox の
+    空欄は「不明」であって「値が無い」ではなく、手で補った曜日・時刻等を毎週
+    消さないため(例: 放送時間欄が空の記事)。
     休止日(hiatus)だけは Wikipedia 検出分と既存分をマージする(抽出が空でも
     手動登録した休止を消さないため)。
 
@@ -462,6 +466,8 @@ def apply_wiki_fields(record, fields, page):
     """
     changed = False
     for k in WIKI_INFO_KEYS:
+        if fields[k] is None and record.get(k) is not None:
+            continue                   # 取れなかった項目は既存値を残す
         if record.get(k) != fields[k]:
             record[k] = fields[k]
             changed = True
