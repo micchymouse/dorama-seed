@@ -2050,7 +2050,7 @@
   },
   {
     "id": "d_0125",
-    "title": "KiDnap GAME",
+    "title": "kiDnap GAME",
     "wikipediaPageId": 5242523,
     "wikipediaTitle": "KiDnap GAME",
     "network": "フジテレビ MakerVille SIMSTORY",
@@ -2979,6 +2979,23 @@
     "hiatus": [],
     "year": 2026,
     "cool": "autumn",
+    "source": null,
+    "note": null
+  },
+  {
+    "id": "d_0180",
+    "title": "カガミタタリ",
+    "wikipediaPageId": 5309703,
+    "wikipediaTitle": "カガミタタリ (テレビドラマ)",
+    "network": "TOKYO MX",
+    "weekday": null,
+    "time": null,
+    "start": "2026-09-06",
+    "episodes": 5,
+    "slot": "毎週日曜日",
+    "hiatus": [],
+    "year": 2026,
+    "cool": "summer",
     "source": null,
     "note": null
   }
