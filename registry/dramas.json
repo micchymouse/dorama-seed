@@ -720,7 +720,7 @@
     "title": "税金で買った本",
     "wikipediaPageId": 4919481,
     "wikipediaTitle": "税金で買った本",
-    "network": "",
+    "network": "NHK・東阪企画",
     "weekday": "月曜",
     "time": null,
     "start": "2026-08-24",
@@ -2245,7 +2245,9 @@
     "start": "2026-10-17",
     "episodes": null,
     "slot": "サタデードラマ10",
-    "hiatus": [],
+    "hiatus": [
+      "2026-11-07"
+    ],
     "year": 2026,
     "cool": "autumn",
     "source": null,
@@ -2534,7 +2536,9 @@
     "start": "2026-10-03",
     "episodes": 10,
     "slot": "オシドラサタデー",
-    "hiatus": [],
+    "hiatus": [
+      "2026-11-07"
+    ],
     "year": 2026,
     "cool": "autumn",
     "source": null,
@@ -2996,6 +3000,40 @@
     "hiatus": [],
     "year": 2026,
     "cool": "summer",
+    "source": null,
+    "note": null
+  },
+  {
+    "id": "d_0181",
+    "title": "マンションのお仕事",
+    "wikipediaPageId": 5312264,
+    "wikipediaTitle": "マンションのお仕事",
+    "network": "、Red Nine Pictures",
+    "weekday": null,
+    "time": null,
+    "start": "2026-07-11",
+    "episodes": 12,
+    "slot": null,
+    "hiatus": [],
+    "year": 2026,
+    "cool": "summer",
+    "source": null,
+    "note": null
+  },
+  {
+    "id": "d_0182",
+    "title": "プルンギル －青の道－",
+    "wikipediaPageId": 1265756,
+    "wikipediaTitle": "プルンギル -青の道-",
+    "network": "Shotcake",
+    "weekday": null,
+    "time": null,
+    "start": "2026-11-20",
+    "episodes": 8,
+    "slot": null,
+    "hiatus": [],
+    "year": 2026,
+    "cool": "autumn",
     "source": null,
     "note": null
   }
