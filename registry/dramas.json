@@ -1156,13 +1156,13 @@
         "year": 2026,
         "cool": "autumn",
         "start": "2026-10-04",
-        "episodes": null,
+        "episodes": 6,
         "hiatus": [],
         "firstEpisode": 19
       }
     ],
     "source": "https://www.tbs.co.jp/VIVANT_tbs/about/",
-    "note": "Wikipedia未掲載。記事化されたら wikipediaPageId を紐付ける(削除はしない)"
+    "note": "Wikipedia未掲載。記事化されたら wikipediaPageId を紐付ける(削除はしない)。第2シーズンは全14話(夏: 第11〜18話 / 秋: 第19〜24話、最終回 2026-11-08)"
   },
   {
     "id": "d_0072",
@@ -2429,8 +2429,8 @@
     "wikipediaPageId": 1596860,
     "wikipediaTitle": "ユージニア",
     "network": "WOWOWプライム",
-    "weekday": null,
-    "time": null,
+    "weekday": "日曜",
+    "time": "22:00",
     "start": "2026-11-08",
     "episodes": 6,
     "slot": "連続ドラマW",
@@ -2438,7 +2438,7 @@
     "year": 2026,
     "cool": "autumn",
     "source": null,
-    "note": null
+    "note": "Wikipedia の放送時間欄が空のため曜日・時刻を手動補完(WOWOWプライム 毎週日曜22時)"
   },
   {
     "id": "d_0148",
@@ -2466,13 +2466,13 @@
     "weekday": "水曜",
     "time": "24:24",
     "start": "2026-10-08",
-    "episodes": null,
+    "episodes": 10,
     "slot": "水曜プラチナイト",
     "hiatus": [],
     "year": 2026,
     "cool": "autumn",
     "source": null,
-    "note": null
+    "note": "Wikipedia の放送回数欄が空のため、放送期間「2026年10月8日 - 12月10日(予定)」から全10話と手動補完"
   },
   {
     "id": "d_0150",
@@ -2740,13 +2740,13 @@
     "weekday": "火曜",
     "time": "24:59",
     "start": "2026-10-20",
-    "episodes": null,
+    "episodes": 10,
     "slot": "ドラマイズム",
     "hiatus": [],
     "year": 2026,
     "cool": "autumn",
     "source": "https://www.oricon.co.jp/drama/2026_autumn/",
-    "note": "初回のみ25:04開始。Wikipedia はシリーズ記事のみ(放送開始が過去年のため fetch 対象外)。今期単独の記事ができたら紐付ける"
+    "note": "全10話(最終回 2026-12-22)。初回のみ25:04開始。Wikipedia はシリーズ記事のみ(放送開始が過去年のため fetch 対象外)。今期単独の記事ができたら紐付ける"
   },
   {
     "id": "d_0166",
@@ -2791,13 +2791,13 @@
     "weekday": "木曜",
     "time": "21:25",
     "start": "2026-10-29",
-    "episodes": null,
+    "episodes": 6,
     "slot": null,
     "hiatus": [],
     "year": 2026,
     "cool": "autumn",
     "source": "https://www.oricon.co.jp/drama/2026_autumn/",
-    "note": "Wikipedia未掲載。記事化されたら wikipediaPageId を紐付ける(削除はしない)"
+    "note": "Wikipedia未掲載。記事化されたら wikipediaPageId を紐付ける(削除はしない)。全6話(TOKYO MX 公式発表)"
   },
   {
     "id": "d_0169",
@@ -2927,13 +2927,13 @@
     "weekday": "金曜",
     "time": "24:52",
     "start": "2026-10-02",
-    "episodes": null,
+    "episodes": 10,
     "slot": "ドラマ25",
     "hiatus": [],
     "year": 2026,
     "cool": "autumn",
     "source": "https://www.oricon.co.jp/drama/2026_autumn/",
-    "note": "夏編(台帳未登録)の続き。通算話数(firstEpisode)は未確認。Wikipedia はシリーズ記事のみ(放送開始が過去年のため fetch 対象外)。今期単独の記事ができたら紐付ける"
+    "note": "夏編(台帳未登録)の続き。秋冬編は第1話から数え直す全10話(テレ東公式ギャラリー)。Wikipedia はシリーズ記事のみ(放送開始が過去年のため fetch 対象外)。今期単独の記事ができたら紐付ける"
   },
   {
     "id": "d_0177",
@@ -2944,13 +2944,13 @@
     "weekday": "土曜",
     "time": "22:00",
     "start": "2026-10-31",
-    "episodes": null,
+    "episodes": 6,
     "slot": "連続ドラマW",
     "hiatus": [],
     "year": 2026,
     "cool": "autumn",
     "source": "https://www.oricon.co.jp/drama/2026_autumn/",
-    "note": "Wikipedia未掲載。記事化されたら wikipediaPageId を紐付ける(削除はしない)"
+    "note": "Wikipedia未掲載。記事化されたら wikipediaPageId を紐付ける(削除はしない)。全6話(2026-10-31〜12-05)"
   },
   {
     "id": "d_0178",
@@ -2961,13 +2961,13 @@
     "weekday": "月曜",
     "time": "22:45",
     "start": "2026-10-26",
-    "episodes": null,
+    "episodes": 32,
     "slot": "夜ドラ",
     "hiatus": [],
     "year": 2026,
     "cool": "autumn",
     "source": "https://www.oricon.co.jp/drama/2026_autumn/",
-    "note": "月〜木の帯放送。週次モデルに合わせ月曜で登録(ラジオスター d_0123 と同じ扱い)"
+    "note": "月〜木の帯放送。週次モデルに合わせ月曜で登録(ラジオスター d_0123 と同じ扱い)。全32話(8週)"
   },
   {
     "id": "d_0179",
