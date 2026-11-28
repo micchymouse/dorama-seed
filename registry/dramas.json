@@ -2046,7 +2046,10 @@
     "year": 2026,
     "cool": "autumn",
     "source": null,
-    "note": null
+    "note": null,
+    "hiatus": [
+      "2026-11-28"
+    ]
   },
   {
     "id": "d_0125",
@@ -2108,7 +2111,7 @@
     "time": "22:15",
     "start": "2026-10-04",
     "episodes": 8,
-    "slot": "日10ドラマ",
+    "slot": "日10",
     "hiatus": [],
     "year": 2026,
     "cool": "autumn",
@@ -2483,7 +2486,7 @@
     "weekday": "木曜",
     "time": "24:59",
     "start": "2026-10-09",
-    "episodes": null,
+    "episodes": 8,
     "slot": "ドラマフィル",
     "hiatus": [],
     "year": 2026,
@@ -2570,7 +2573,7 @@
     "weekday": null,
     "time": "21:00",
     "start": "2026-11-14",
-    "episodes": 8,
+    "episodes": 2,
     "slot": null,
     "hiatus": [],
     "year": 2026,
